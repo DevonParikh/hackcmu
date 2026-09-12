@@ -12,7 +12,7 @@ Built for HackCMU. Plan and rationale: [CLAUDE.md](CLAUDE.md).
 4. **Assess** – strengths, weaknesses, and friction signals (repetitive chores). Every claim carries evidence and a link; in live mode quotes are verified against the page text and dropped when they are not there.
 5. **Recommend** – ranks six templates (support & FAQ, lead intake, review responder, booking intake, listing writer, staff assistant). Cards show reasons and what is written down, never a score.
 6. **Build and test** – assembles the tool from the site content and uploads, runs a 10-question self-test (the owner's own most-asked questions first), and shows each outcome: answered, handed to a person, or failed.
-7. **Show the impact** – a topic-coverage grid, before/after route diagrams, hours-per-week ranges with the arithmetic printed, customer wait bars, and a self-serve comparison. Every number wears a badge saying where it came from (seen on your site, from your file, compared, your number, tested, estimate, measured). Nothing is estimated until the owner enters a number.
+7. **Show the impact** – a topic-coverage grid, before/after route diagrams, hours-per-week ranges with the arithmetic printed, customer wait bars, and a self-serve comparison. Every number wears a badge saying where it came from (seen on your site, from your file, your number, you told us, tested, estimate, measured). Nothing is estimated until the owner enters a number.
 8. **Deploy** – hosts the tool at `/t/{slug}` with a one-line embed, platform-specific instructions, an owner's guide, and a live usage panel (answered vs handed off) once people use it.
 
 Everything is stored in MongoDB: `companies`, `runs`, `sources`, `tools`, `conversations`.
@@ -35,7 +35,7 @@ npm run build && npm start
 
 ### Modes
 
-- **Live** (`ANTHROPIC_API_KEY` set): Claude Opus 5 profiles, assesses, and ranks; Claude Sonnet 5 runs competitor research with Anthropic's server-side web search and web fetch tools, and powers the deployed tools with prompt caching over the site content.
+- **Live** (`ANTHROPIC_API_KEY` set): Claude Opus 5 profiles and assesses over one cached copy of the crawled corpus; Claude Sonnet 5 runs competitor research with Anthropic's server-side web search and web fetch tools, writes and grades the self-test, and powers the deployed tools with prompt caching over the site content. If a Claude call is cut off or declined, the stage falls back to the site-only analysis and says so in the log; a grader hiccup falls back to the rule-based grader rather than losing the build.
 - **Demo** (no key, or `TAILOR_DEMO=1`): crawling, feature comparison, friction detection, ranking, MongoDB storage, and the hosted tools all run for real; analysis text and tool replies come from deterministic heuristics and keyword retrieval over the crawled pages. Competitor discovery needs live mode; in demo mode, enter competitor URLs on the start page.
 
 ### Environment

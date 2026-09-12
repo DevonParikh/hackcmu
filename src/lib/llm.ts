@@ -21,6 +21,18 @@ function getClient(): Anthropic {
 
 type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
+/** Haiku-class models reject the effort parameter, so it is only sent to models that take it. */
+function effortFor(model: string, effort: Effort): { effort?: Effort } {
+  return /haiku/i.test(model) ? {} : { effort };
+}
+
+function systemBlocks(system: string, cachedSystem?: string): Anthropic.TextBlockParam[] {
+  const blocks: Anthropic.TextBlockParam[] = [];
+  if (cachedSystem) blocks.push({ type: "text", text: cachedSystem, cache_control: { type: "ephemeral" } });
+  blocks.push({ type: "text", text: system });
+  return blocks;
+}
+
 function textOf(content: Anthropic.ContentBlock[]): string {
   return content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -29,21 +41,27 @@ function textOf(content: Anthropic.ContentBlock[]): string {
     .trim();
 }
 
-/** One structured-output call validated against a zod schema. */
+/**
+ * One structured-output call validated against a zod schema. `cachedSystem` is a stable prefix
+ * (the crawled corpus) placed first and cached, so the profile, assessment, and build stages of
+ * one run share it instead of each paying for it.
+ */
 export async function structured<T>(opts: {
   schema: z.ZodType<T>;
   system: string;
   user: string;
+  cachedSystem?: string;
   model?: string;
   effort?: Effort;
   maxTokens?: number;
 }): Promise<T> {
+  const model = opts.model ?? MODELS.main;
   const response = await getClient().messages.create({
-    model: opts.model ?? MODELS.main,
+    model,
     max_tokens: opts.maxTokens ?? 16000,
-    system: opts.system,
+    system: systemBlocks(opts.system, opts.cachedSystem),
     messages: [{ role: "user", content: opts.user }],
-    output_config: { effort: opts.effort ?? "medium", format: zodOutputFormat(opts.schema) },
+    output_config: { ...effortFor(model, opts.effort ?? "medium"), format: zodOutputFormat(opts.schema) },
   });
   if (response.stop_reason === "refusal") {
     throw new Error(`Claude declined this request (${response.stop_details?.category ?? "refusal"})`);
@@ -72,17 +90,13 @@ export async function completeText(opts: {
   effort?: Effort;
   maxTokens?: number;
 }): Promise<string> {
-  const system: Anthropic.TextBlockParam[] = [];
-  if (opts.cachedSystem) {
-    system.push({ type: "text", text: opts.cachedSystem, cache_control: { type: "ephemeral" } });
-  }
-  system.push({ type: "text", text: opts.system });
+  const model = opts.model ?? MODELS.main;
   const response = await getClient().messages.create({
-    model: opts.model ?? MODELS.main,
+    model,
     max_tokens: opts.maxTokens ?? 4000,
-    system,
+    system: systemBlocks(opts.system, opts.cachedSystem),
     messages: opts.messages,
-    output_config: { effort: opts.effort ?? "low" },
+    output_config: effortFor(model, opts.effort ?? "low"),
   });
   if (response.stop_reason === "refusal") {
     return "I can't help with that one. Please contact us directly and a person will follow up.";
@@ -94,6 +108,7 @@ export async function completeText(opts: {
 /**
  * Research with Anthropic's server-side web search and web fetch tools.
  * Loops on pause_turn until the model finishes, then returns its written notes.
+ * Fetched pages are capped so a long page cannot dominate the context, and the loop is bounded.
  */
 export async function research(opts: {
   prompt: string;
@@ -101,18 +116,21 @@ export async function research(opts: {
   maxSearches?: number;
 }): Promise<string> {
   const c = getClient();
+  const model = opts.model ?? MODELS.worker;
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: opts.prompt }];
   const notes: string[] = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     const response = await c.messages.create({
-      model: opts.model ?? MODELS.worker,
-      max_tokens: 16000,
+      model,
+      max_tokens: 12000,
+      system:
+        "You research small businesses on the public web. Work efficiently: a few searches, fetch only the official sites that matter, then finish with a consolidated list. For each competitor give the official website URL, one line on why it competes, what it offers, two strengths, two weaknesses, and where you found each fact. Only include businesses you actually found; never guess a URL.",
       messages,
       tools: [
         { type: "web_search_20260209", name: "web_search", max_uses: opts.maxSearches ?? 8 },
-        { type: "web_fetch_20260209", name: "web_fetch", max_uses: 6 },
+        { type: "web_fetch_20260209", name: "web_fetch", max_uses: 6, max_content_tokens: 20000 },
       ],
-      output_config: { effort: "medium" },
+      output_config: effortFor(model, "medium"),
     });
     notes.push(textOf(response.content));
     if (response.stop_reason === "pause_turn") {

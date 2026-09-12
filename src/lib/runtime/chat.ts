@@ -141,11 +141,15 @@ function hasPhrase(text: string, phrase: string): boolean {
 }
 
 export async function answerChat(tool: ToolDoc, history: { role: "user" | "assistant"; content: string }[], userMessage: string): Promise<string> {
-  if (isDemo()) return demoChat(tool, history, userMessage);
-  const messages: Anthropic.MessageParam[] = [
-    ...history.filter((m) => m.content.trim()).slice(-12).map((m) => ({ role: m.role, content: m.content })),
-    { role: "user", content: userMessage },
-  ];
+  const message = userMessage.trim();
+  if (!message) return `Type a question and I'll do my best. ${escalation(tool)}`;
+  // Off-limits topics are enforced the same way in both modes, so the owner's setting is a rule, not a hint.
+  if (tool.config.offLimits.some((o) => hasPhrase(message.toLowerCase(), o))) return `I can't help with that here. ${escalation(tool)}`;
+  if (isDemo()) return demoChat(tool, history, message);
+  // The API needs alternating turns that start with the user; drop blanks and a leading assistant turn.
+  const window = history.filter((m) => m.content.trim()).slice(-12);
+  while (window.length && window[0].role !== "user") window.shift();
+  const messages: Anthropic.MessageParam[] = [...window.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: message }];
   const reply = await completeText({
     model: MODELS.runtime,
     cachedSystem: `${tool.config.systemPrompt}\n\nKNOWLEDGE:\n${knowledgeText(tool.config.knowledge)}`,
@@ -179,11 +183,12 @@ export function isQuestion(message: string): boolean {
 /** True when a reply hands the customer to a person instead of answering. */
 export function isHandOff(tool: ToolDoc, reply: string): boolean {
   const c = tool.config.escalation;
-  if (/not sure|couldn't find|one for a person|can't help with that|not able to answer|confirm with a person|can't see the calendar|don't have .{0,30}(details|information)|isn't something i can/i.test(reply)) return true;
+  if (/not sure|couldn't find|can't find|don't have that|one for a person|can't help with that|not able to answer|confirm with a person|can't see the calendar|don't have .{0,30}(details|information)|isn't something i can|beyond what i can|outside what i can|a person (on|from) (our|the) team/i.test(reply)) return true;
   // Contact details alone are not a hand-off ("You can call us at…" answers a contact question);
-  // they are one when paired with uncertainty.
-  const hasContact = !!((c.email && reply.includes(c.email)) || (c.phone && reply.includes(c.phone)));
-  return hasContact && /\b(sorry|not sure|unsure|don't have|do not have|can't|cannot|unable|couldn't|no information|please contact|reach out|recommend contacting|best to (ask|contact|call)|get in touch)\b/i.test(reply);
+  // they are one when paired with uncertainty. Phone numbers are compared by digits so reformatting cannot hide one.
+  const digits = (s: string) => s.replace(/\D/g, "");
+  const hasContact = !!((c.email && reply.toLowerCase().includes(c.email.toLowerCase())) || (c.phone && digits(c.phone).length >= 7 && digits(reply).includes(digits(c.phone))));
+  return hasContact && /\b(sorry|not sure|unsure|don't have|do not have|can't|cannot|unable|couldn't|no information|please contact|reach out|recommend contacting|best to (ask|contact|call)|get in touch|directly|check with)\b/i.test(reply);
 }
 
 /**
@@ -219,6 +224,13 @@ function factAnswer(tool: ToolDoc, lower: string): string | null {
   return null;
 }
 
+/** "From our site" for pages; an uploaded file is named ("From our holiday policies") so customers are not told it is on the website. */
+function fromLabel(chunk: KnowledgeChunk): string {
+  if (chunk.kind !== "user") return "From our site:";
+  const t = chunk.title.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[-_]+/g, " ").trim().toLowerCase();
+  return t && t !== "notes you added" ? `From our ${t}:` : "From our notes:";
+}
+
 function demoChat(tool: ToolDoc, history: { role: "user" | "assistant"; content: string }[], userMessage: string): string {
   const t = getTemplate(tool.templateId);
   const name = tool.config.name;
@@ -248,7 +260,7 @@ function demoChat(tool: ToolDoc, history: { role: "user" | "assistant"; content:
             { ask: "the best way to reach you", test: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}|\b(call me|email me|text me)\b/i },
           ]
         : [
-            { ask: "the service you'd like", test: /\b(book|appointment|table|for \d+ people|cleaning|consultation|session|class|cake|order|haircut|checkup|reservation|room|visit)\b/i },
+            { ask: tool.config.bookingKind === "order" ? "what you'd like to order" : tool.config.bookingKind === "reservation" ? "how many people it is for" : "the service you'd like", test: /\b(book|appointment|table|for \d+ people|for (two|three|four|five|six)\b|cleaning|consultation|session|class|cake|order|haircut|checkup|reservation|room|visit|party of)\b/i },
             { ask: "a preferred date and time (plus one alternative)", test: /\b(\d{1,2}(:\d{2})?\s?(am|pm)|noon|morning|afternoon|evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|next week)\b/i },
             { ask: "your name", test: /\b(my name is|i'm|i am|this is|name:)\s+[a-z]/i },
             { ask: "a phone number or email", test: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/i },
@@ -262,7 +274,7 @@ function demoChat(tool: ToolDoc, history: { role: "user" | "assistant"; content:
       if (/\b(availab\w*|free (slot|spot|table)|slots?|spots?|openings?|fully booked|any space|any room)\b/.test(lower) && t.id === "booking_intake") {
         direct = "I can't see the calendar from here, but a person will confirm availability once I have your details.";
       } else {
-        direct = factAnswer(tool, lower) ?? (hit && hit.sentences.length && hit.score >= 2 ? `From our site: ${hit.sentences[0]}` : `I couldn't find that on our site, so a person from ${company} will confirm it with you.`);
+        direct = factAnswer(tool, lower) ?? (hit && hit.sentences.length && hit.score >= 2 ? `${fromLabel(hit.chunk)} ${hit.sentences[0]}` : `I couldn't find that on our site, so a person from ${company} will confirm it with you.`);
       }
     }
     if (!next) return `${direct ? direct + " " : ""}Thanks, I have what I need. Someone from ${company} will confirm with you. ${escalation(tool)}`;

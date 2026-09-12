@@ -67,6 +67,7 @@ export function ToolView({ tool, embed, reportHref }: { tool: PublicTool; embed:
       /* clipboard blocked; the text is still selectable */
     }
   }
+  const [logoOk, setLogoOk] = useState(true);
   const showSuggestions = messages.length <= 1 && tool.suggestedQuestions.length > 0;
   return (
     <main className={embed ? "flex h-screen flex-col" : "mx-auto flex max-w-2xl flex-col px-5 py-6"}>
@@ -84,9 +85,9 @@ export function ToolView({ tool, embed, reportHref }: { tool: PublicTool; embed:
       )}
       <div className={embed ? "flex flex-1 flex-col overflow-hidden" : "panel flex flex-col overflow-hidden"} style={{ minHeight: embed ? undefined : 560 }}>
         <div className="flex items-center gap-3 px-4 py-3" style={{ background: primary, color: onPrimary }}>
-          {tool.brand.logoUrl && (
+          {tool.brand.logoUrl && logoOk && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={tool.brand.logoUrl} alt="" className="h-7 w-7 rounded bg-white/90 object-contain p-0.5" />
+            <img src={tool.brand.logoUrl} alt="" className="h-7 w-7 rounded bg-white/90 object-contain p-0.5" onError={() => setLogoOk(false)} />
           )}
           <div className="min-w-0">
             <div className="truncate font-semibold">{tool.name}</div>

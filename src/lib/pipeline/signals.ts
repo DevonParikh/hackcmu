@@ -56,7 +56,7 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
   if (!features.contactForm && !features.ecommerce) {
     out.push({
       id: "no_lead_capture",
-      task: "Qualifying new inquiries through unstructured emails and calls",
+      task: "Sorting out new enquiries that arrive as loose emails and calls",
       who: "Owner",
       frequency: "Every new inquiry",
       evidence: [{ quote: "No contact or inquiry form found on the site", sourceUrl: contactPage?.url ?? rootUrl, observed: true }],
@@ -66,9 +66,9 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
   if (reviewLink && !features.reviewsShown) {
     out.push({
       id: "reviews_offsite",
-      task: "Replying to reviews on Google, Yelp, or similar",
+      task: "Keeping up with reviews on Google, Yelp, or similar",
       who: "Owner",
-      frequency: "Every review",
+      frequency: "Every review (we cannot see whether they get replies)",
       evidence: [{ quote: "Links to a review site, but no reviews shown on the site itself", sourceUrl: reviewLink.url, observed: true }],
     });
   }
@@ -86,18 +86,18 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
     if (supportSentence && !out.some((o) => o.id === "hiring_support")) {
       out.push({
         id: "hiring_support",
-        task: "Hiring people to answer routine customer questions",
-        who: "Customer support staff",
-        frequency: "Ongoing",
+        task: "A support hire will spend part of every day on routine customer questions",
+        who: "Customer support staff (from your job post)",
+        frequency: "Daily",
         evidence: [{ quote: supportSentence.slice(0, 180), sourceUrl: jp.url }],
       });
     }
     if (deskSentence && !out.some((o) => o.id === "hiring_front_desk")) {
       out.push({
         id: "hiring_front_desk",
-        task: "Hiring front-desk staff to take calls and schedule by hand",
-        who: "Front desk",
-        frequency: "Ongoing",
+        task: "A front-desk hire will spend part of every day taking calls and scheduling by hand",
+        who: "Front desk (from your job post)",
+        frequency: "Daily",
         evidence: [{ quote: deskSentence.slice(0, 180), sourceUrl: jp.url }],
       });
     }
@@ -127,9 +127,9 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
     // One signal; templates match on any of the joined ids.
     out.push({
       id: ids.join("+"),
-      task: pain.trim().slice(0, 200),
-      who: "Reported by the owner",
-      frequency: "As described",
+      task: "What you told us takes the most time",
+      who: "You",
+      frequency: "As you described it",
       evidence: [{ quote: pain.trim().slice(0, 200), sourceUrl: "user-input" }],
     });
   }
