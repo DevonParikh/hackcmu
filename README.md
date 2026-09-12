@@ -67,7 +67,7 @@ Read [DEMO.md](DEMO.md) before going on stage: the exact commands, the sentence 
 | **ElevenLabs** | `server.mjs /api/speak`, `demo.mjs` | The spoken read-back before signing falls back to the browser voice. |
 | **Auth0** | `server.mjs` (`AUTH0_*`) | Anyone with the URL can talk to the agent; the audit log has no `who`; `DELEGATES` can't map a login to its delegate key. |
 | **MongoDB Atlas** | `core.mjs audit()` | The audit trail is a local file instead of a shared collection. |
-| **Vultr** | `deploy/` | Nothing hosted: `deploy/vultr-setup.sh` + `deploy/allowance.service` put `server.mjs` behind systemd on a fresh Ubuntu box. |
+| **Vultr** | `deploy/`, `server.mjs /api/webhook` | Nothing hosted and nowhere for the chain to call back: `deploy/vultr-setup.sh` + `deploy/allowance.service` put `server.mjs` behind systemd on a fresh Ubuntu box, where `/api/webhook` receives transaction webhooks (Helius) and marks each attempt `confirmedByChain`. |
 
 ## Devnet, localnet, replay — and which is which
 

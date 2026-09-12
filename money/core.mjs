@@ -89,6 +89,28 @@ export async function readLog(n = 10) {
            .filter(Boolean).map(l => JSON.parse(l)).slice(-n).reverse();
 }
 
+// Out-of-band confirmation from the chain itself (a Helius-style transaction webhook, see server.mjs /api/webhook):
+// stored as its own record, and the attempt with that signature is marked confirmedByChain. Never throws.
+export async function recordChainEvent(ev) {
+  const doc = { ...ev, ts: new Date().toISOString(), cluster: CLUSTER, source: "webhook" };
+  try {
+    if (env.MONGODB_URI) {
+      const db = (await attempts()).s.db;
+      await db.collection("chain_events").insertOne(doc);
+      const r = await db.collection("attempts").updateOne({ signature: ev.signature }, { $set: { confirmedByChain: true, chainEvent: { err: ev.err ?? null, slot: ev.slot ?? null, ts: doc.ts } } });
+      return { where: "MongoDB hackcmu.chain_events", matchedAttempt: r.matchedCount > 0 };
+    }
+    fs.appendFileSync("chain_events.jsonl", JSON.stringify(doc) + "\n");
+    let matched = false;
+    if (fs.existsSync("attempts.jsonl")) {
+      const rows = fs.readFileSync("attempts.jsonl", "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l));
+      for (const r of rows) if (r.signature === ev.signature) { r.confirmedByChain = true; r.chainEvent = { err: ev.err ?? null, slot: ev.slot ?? null, ts: doc.ts }; matched = true; }
+      if (matched) fs.writeFileSync("attempts.jsonl", rows.map(r => JSON.stringify(r)).join("\n") + "\n");
+    }
+    return { where: "chain_events.jsonl", matchedAttempt: matched };
+  } catch (e) { return { where: `not recorded: ${oneLine(e)}`, matchedAttempt: false }; }
+}
+
 export async function closeAudit() { if (mongo) { await mongo.close(); mongo = null; } }
 
 // ------------------------------------------------------------------ intent

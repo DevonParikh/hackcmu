@@ -1,0 +1,2 @@
+{"signature":"5uN9MCmueQfMccwD6wmCvZx6NxH6QcbF1qUowrvUJRCVgTRptbiPY38eF8iLfL6WRx8YvUfJbr7jCsydDeAn1BXf","err":{"InstructionError":[0,{"Custom":1}]},"slot":123,"type":"TRANSFER","description":"delegate tried 500","ts":"2026-09-12T07:48:34.987Z","cluster":"localnet","source":"webhook"}
+{"signature":"nope","err":null,"slot":null,"type":null,"description":null,"ts":"2026-09-12T07:48:34.993Z","cluster":"localnet","source":"webhook"}

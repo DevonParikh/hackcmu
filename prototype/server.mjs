@@ -8,6 +8,7 @@
 //   ELEVENLABS_MODEL=...         default eleven_flash_v2_5
 //   PORT=3000
 //
+// Chain webhook: WEBHOOK_SECRET=...   (POST /api/webhook, Authorization: <secret>; Helius transaction webhooks fit as-is)
 // Login (Auth0), on when all three are set — without them the page is open, which is fine on a laptop:
 //   AUTH0_ISSUER_BASE_URL=https://<tenant>.us.auth0.com   AUTH0_CLIENT_ID=...   AUTH0_SECRET=<32+ random chars>
 //   AUTH0_BASE_URL=https://agent.example.com               (this server's public URL; defaults to http://localhost:PORT)
@@ -23,7 +24,7 @@ import { auth } from "express-openid-connect";
 let core;
 try { core = await import("../money/core.mjs"); }
 catch (e) { console.error(`\n  ${String(e?.message ?? e).replace(/\s+/g, " ")}\n`); process.exit(1); }
-const { prepare, execute, audit, readLog, getState, loadDelegate, TOKEN, CLUSTER, RPC, oneLine } = core;
+const { prepare, execute, audit, readLog, getState, loadDelegate, recordChainEvent, TOKEN, CLUSTER, RPC, oneLine } = core;
 
 const PORT = process.env.PORT ?? 3000;
 const app = express();
@@ -119,6 +120,21 @@ app.post("/api/decline", gate, async (req, res) => {
 app.get("/api/log", async (req, res) => {
   try { res.json(await readLog(12)); }
   catch (e) { res.status(500).json({ error: oneLine(e) }); }
+});
+
+// The webhook listener: the chain's own word on what happened, out of band. Point a Helius (or any) transaction
+// webhook for the delegate address here; set WEBHOOK_SECRET and send it as the Authorization header. Each event is
+// stored, and the attempt with that signature is marked confirmedByChain — our client's verdict and the chain's agree.
+app.post("/api/webhook", async (req, res) => {
+  if (process.env.WEBHOOK_SECRET && req.get("authorization") !== process.env.WEBHOOK_SECRET) return res.status(401).json({ error: "bad secret" });
+  const events = Array.isArray(req.body) ? req.body : [req.body];
+  const out = [];
+  for (const ev of events) {
+    const signature = ev?.signature ?? ev?.transaction?.signatures?.[0] ?? null;
+    if (!signature) continue;
+    out.push({ signature, ...(await recordChainEvent({ signature, err: ev?.transactionError ?? ev?.meta?.err ?? null, slot: ev?.slot ?? null, type: ev?.type ?? null, description: ev?.description ?? null })) });
+  }
+  res.json({ ok: true, recorded: out });
 });
 
 // ElevenLabs text-to-speech, proxied so the key stays on the server. 204 = use the browser voice.

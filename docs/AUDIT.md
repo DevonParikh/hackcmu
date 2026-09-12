@@ -22,7 +22,7 @@ in-process ledger. Everything marked **needs laptop** is one command away on a m
 | Gap | Costs | Minutes | Status |
 |---|---|---|---|
 | Auth0 was a `TODO(auth0)` comment | Auth0 prize; Technical Difficulty | 45 | **Done, env-gated.** Login required for intent/confirm/decline when `AUTH0_*` is set; the login's email picks the delegate key (`DELEGATES`); every audit row carries `who`. Verified: gate returns 401 without a session, page shows sign-in, nothing changes when unset. **Needs laptop:** a real tenant to click through `/login`. |
-| Nothing hosted on Vultr | Vultr prize | 20 + 15 on the box | `deploy/vultr-setup.sh` + `deploy/allowance.service` (systemd). **Needs laptop:** a box and `scp keys .env`. |
+| Nothing hosted on Vultr; no webhook listener | Vultr prize | 20 + 15 on the box | `deploy/vultr-setup.sh` + `deploy/allowance.service` (systemd); `POST /api/webhook` (Helius-shaped, `WEBHOOK_SECRET`) stores chain events and marks the matching attempt `confirmedByChain` — verified with curl. **Needs laptop:** a box, `scp keys .env`, a Helius webhook pointed at it. |
 | MongoDB audit log only readable from the CLI | MongoDB prize; Demo Quality | 15 | `npm run demo` prints the log with the blocked row highlighted; `npm run agent -- --log`. Verified with the file fallback; **needs laptop:** one run with `MONGODB_URI` set. |
 | No one-command demo, no typed/offline variants | Demo Quality | 60 | **Done:** `npm run demo`, `--text`, `--offline`, `--capture`, `--no-reset`, `--debug`; `DEMO.md`. |
 | Devnet proof not re-verified | The floor | 5 | Floor + demo + page + Next app all verified on the real token program (localnet). **Needs laptop:** `npm run floor` and `npm run demo -- --capture` on devnet, commit the capture. |
