@@ -9,7 +9,6 @@ attempts.jsonl
 data/*.pkl
 data/judge-ce/
 attempts.jsonl
-
 # trained-but-not-shipped model artifacts (regenerate with the scripts in scripts/)
 data/judge-local.json
-\nchain_events.jsonl\n
+chain_events.jsonl
