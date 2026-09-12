@@ -25,7 +25,8 @@ export type ChainState = { token: string; balance: string; allowance: string; de
 
 export async function chainState(): Promise<ChainState | null> {
   const core = await money(); if (!core) return null;
-  return { token: core.TOKEN, ...(await core.getState()) };
+  const s = await core.getState();
+  return { token: core.TOKEN, ...s, owner: s.owner ?? "" };
 }
 
 export type RefundResult = {
