@@ -12,3 +12,7 @@ attempts.jsonl
 # trained-but-not-shipped model artifacts (regenerate with the scripts in scripts/)
 data/judge-local.json
 chain_events.jsonl
+
+# local secrets
+.env.local
+.env*.local
