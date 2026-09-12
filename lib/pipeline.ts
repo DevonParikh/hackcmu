@@ -14,6 +14,8 @@ import { scrapeSite } from "./scrape";
 import { generateJSON, generateText } from "./gemini";
 import { Profile, Benchmark, Assessment, Ranking, TEMPLATES, type Source } from "./schemas";
 import { dedupeBoilerplate, verifyAssessment, judgeRelevance, applyVerdicts } from "./verify";
+import { extractFeatures } from "./features";
+import { estimate, type Estimate } from "./estimator";
 
 export type Log = (msg: string) => void;
 const oneLine = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/\s+/g, " ").slice(0, 80);
@@ -43,7 +45,7 @@ async function findReviews(name: string, url: string): Promise<Source | null> {
 
 const ProfileAndAssessment = z.object({ profile: Profile, assessment: Assessment });
 
-export async function runAnalysis(runId: ObjectId, url: string, log: Log, onReady?: () => void) {
+export async function runAnalysis(runId: ObjectId, url: string, log: Log, onReady?: () => void, onEstimate?: (e: Estimate) => void) {
   const t0 = Date.now();
   const since = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
   const timings: Record<string, number> = {};
@@ -73,7 +75,15 @@ export async function runAnalysis(runId: ObjectId, url: string, log: Log, onRead
   const rev = await reviews;
   if (rev) { sources.push(rev); log("Found reviews"); }
   mark("reviews");
-  await save({ stage: "scraped", name, sources, brand: { colors, logo }, thin, timings });
+
+  // ---- instant estimate from structure alone (only if scripts/train-estimator.py has produced data/estimator.json)
+  const features = extractFeatures(sources, thin);
+  const quickEstimate = estimate(features);
+  if (quickEstimate) {
+    log(`Quick estimate from the site's structure: about ${quickEstimate.hours} hours a week. Reading the details…`);
+    onEstimate?.(quickEstimate);
+  }
+  await save({ stage: "scraped", name, sources, brand: { colors, logo }, thin, features, quickEstimate, timings });
 
   // ---- B + D: one call. Profile and assessment together; the corpus is sent once.
   log("Reading it all and working out where the week goes");
@@ -104,16 +114,18 @@ ${corpus(sources)}`);
   const verified = verifyAssessment(assessment, sources);
   let final = verified.assessment;
   const report = verified.report;
+  let judgePairs: { claim: string; quote: string; verdict: string }[] = [];
   try {
     const pairs = final.frictionSignals.flatMap(f => f.evidence.map(e => ({ claim: f.task, quote: e.quote })));
     const verdicts = await judgeRelevance(pairs);
+    judgePairs = pairs.map((p, i) => ({ ...p, verdict: verdicts[i] }));   // labeled pairs: training data for a local judge
     const judged = applyVerdicts(final.frictionSignals, verdicts, report);
     if (judged.length) final = { ...final, frictionSignals: judged };
     else log("None of the evidence showed the tasks happening; keeping them as low-confidence suggestions");
   } catch { log("Couldn't double-check evidence relevance; keeping it as is"); }
   if (!final.frictionSignals.length) throw new Error("Nothing repetitive was found with evidence to back it. Try a site with reviews or an FAQ.");
   mark("verify");
-  await save({ assessment: final, verification: report, timings });
+  await save({ assessment: final, verification: report, judgePairs, timings });
   log(`Checked ${report.checked} quotes: ${report.dropped} weren't in the sources, ${report.unrelated} didn't support their claim`);
 
   // ---- E: rank (small input, fast)

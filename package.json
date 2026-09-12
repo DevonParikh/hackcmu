@@ -8,7 +8,11 @@
     "proto": "node prototype/server.mjs",
     "reset": "node money/reset.mjs",
     "floor": "node money/floor.mjs",
-    "agent": "node money/agent.mjs"
+    "agent": "node money/agent.mjs",
+    "seed": "node scripts/seed-urls.mjs",
+    "batch": "node scripts/batch.mjs",
+    "export": "node scripts/export-training.mjs && node scripts/export-pairs.mjs",
+    "train": "python3 scripts/train-estimator.py && python3 scripts/judge.py train"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.15",

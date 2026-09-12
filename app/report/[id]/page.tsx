@@ -79,6 +79,13 @@ export default async function Report({ params }: { params: Promise<{ id: string 
             The biggest one: {signals[0].task}. Estimated from {src.length} sources; every number below links to where it came from.
             {run.timings?.rank != null && <> Analysed in {Math.round(run.timings.rank)} seconds.</>}
           </p>
+          {run.quickEstimate && (
+            <p className="mt-3 max-w-md text-sm text-muted">
+              Our instant estimate from the site's structure alone said <span className="tnum text-ink">{run.quickEstimate.hours}</span>
+              {" "}({run.quickEstimate.contributions.filter(c => Math.abs(c.hours) >= 0.3).slice(0, 3).map(c => `${c.label} ${c.hours > 0 ? "+" : ""}${c.hours}`).join(", ")}).
+              {" "}That model was trained on {run.quickEstimate.n} businesses; typical error ±{run.quickEstimate.mae} hours.
+            </p>
+          )}
         </header>
       )}
 

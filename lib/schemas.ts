@@ -135,6 +135,8 @@ export type Run = {
   verification?: VerifyReport;
   thin?: boolean;
   ranking?: Ranking;
+  features?: Record<string, number>;  // lib/features.ts, deterministic, from the crawl
+  quickEstimate?: { hours: number; contributions: { feature: string; label: string; hours: number }[]; n: number; r2: number; mae: number } | null;
   timings?: Record<string, number>;   // seconds since start, per stage
   createdAt: Date;
   updatedAt?: Date;

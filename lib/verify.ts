@@ -110,6 +110,18 @@ export type Verdict = z.infer<typeof Verdicts>["verdicts"][number];
 
 export async function judgeRelevance(pairs: { claim: string; quote: string }[]): Promise<Verdict[]> {
   if (!pairs.length) return [];
+  // A local distilled judge (scripts/judge.py serve) answers in ~40ms. Gemini is the fallback.
+  if (process.env.JUDGE_URL) {
+    try {
+      const r = await fetch(process.env.JUDGE_URL, { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pairs }), signal: AbortSignal.timeout(5000) });
+      if (r.ok) {
+        const { verdicts } = await r.json();
+        const ok = Array.isArray(verdicts) && verdicts.length === pairs.length && verdicts.every(v => ["demonstrates", "suggests", "unrelated"].includes(v));
+        if (ok) return verdicts as Verdict[];
+      }
+    } catch { /* fall through to Gemini */ }
+  }
   const res = await generateJSON(Verdicts,
 `You are checking evidence for claims about a small business. For each numbered pair, classify the QUOTE:
 - "demonstrates": the quote shows the CLAIM actually happening — a customer or reviewer describing doing it, a page saying "call us to…", a staff note about doing it by hand.

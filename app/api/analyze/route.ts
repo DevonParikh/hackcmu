@@ -35,7 +35,9 @@ export async function POST(req: NextRequest) {
       };
       send("run", { id: insertedId.toString() });
       try {
-        await runAnalysis(insertedId, start.href, m => send("log", { m }), () => send("done", { id: insertedId.toString() }));
+        await runAnalysis(insertedId, start.href, m => send("log", { m }),
+          () => send("done", { id: insertedId.toString() }),
+          e => send("estimate", e));
       } catch (e: unknown) {
         const m = e instanceof Error ? e.message : String(e);
         await runs.updateOne({ _id: insertedId }, { $set: { stage: "failed", error: m } });
