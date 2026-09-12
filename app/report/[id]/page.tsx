@@ -44,7 +44,7 @@ export default async function Report({ params }: { params: Promise<{ id: string 
   const Quote = ({ e }: { e: Evidence }) => {
     const s = src[e.source];
     const q = e.quote.length > 110 ? e.quote.slice(0, 108).trimEnd() + "…" : e.quote;
-    const where = s ? (s.kind === "review" ? "reviews" : host(s.url)) : "";
+    const where = s ? (s.kind === "review" ? "reviews" : s.kind === "pasted" ? (s.title || "your document") : host(s.url)) : "";
     const tag = e.kind === "demonstrates" ? "shows it" : e.kind === "suggests" ? "suggests it" : "";
     const body = <>“{q}”{where && <span className="text-muted"> — {where}</span>}{tag && <span className="ml-2 text-xs text-muted">{tag}</span>}</>;
     return (

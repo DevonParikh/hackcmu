@@ -1,9 +1,8 @@
 "use client";
-// Screen 1: one field, a live log, then straight to the report.
+// Screen 1: the website, optional detail (name, competitors, the biggest time sink, documents), a live log, then straight to the report.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
 
 // Consecutive "Reading …" lines become one counting line; only the last three lines are shown.
 function collapse(lines: string[]): { text: string; sub?: string }[] {
@@ -18,8 +17,15 @@ function collapse(lines: string[]): { text: string; sub?: string }[] {
   return out.slice(-3);
 }
 
+const ACCEPT = ".pdf,.txt,.md,.markdown,.csv,.tsv,.json,.html,.htm,text/plain,application/pdf";
+
 export default function Start() {
   const [url, setUrl] = useState("");
+  const [name, setName] = useState("");
+  const [competitors, setCompetitors] = useState("");
+  const [pain, setPain] = useState("");
+  const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [lines, setLines] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [quick, setQuick] = useState<{
@@ -33,9 +39,14 @@ export default function Start() {
     e.preventDefault();
     if (!url.trim() || busy) return;
     setBusy(true); setLines([]); setQuick(null);
-    const r = await fetch("/api/analyze", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }),
-    });
+    const fd = new FormData();
+    fd.set("url", url);
+    fd.set("name", name);
+    fd.set("competitors", competitors);
+    fd.set("pain", pain);
+    fd.set("notes", notes);
+    for (const f of files) fd.append("files", f);
+    const r = await fetch("/api/analyze", { method: "POST", body: fd });
     if (!r.ok || !r.body) {
       const j = await r.json().catch(() => ({ error: r.statusText }));
       setLines([j.error ?? "Something went wrong."]); setBusy(false); return;
@@ -61,22 +72,58 @@ export default function Start() {
     setBusy(false);
   }
 
+  const extras = [name, competitors, pain, notes].filter(s => s.trim()).length + files.length;
+
   return (
-    <div className="max-w-xl">
-      <form onSubmit={analyze} className="flex gap-2">
-        <input
-          value={url} onChange={e => setUrl(e.target.value)} placeholder="yourbakery.com"
-          aria-label="Company website" autoComplete="off" disabled={busy}
-          className="min-w-0 flex-1 rounded-md border border-line bg-panel px-4 py-3 text-ink placeholder:text-muted/60 focus:outline-2 focus:outline-blue disabled:opacity-60"
-        />
-        <button type="submit" disabled={busy || !url.trim()}
-          className="rounded-md bg-ink px-5 py-3 text-white disabled:opacity-50">
-          {busy ? "Reading…" : "Analyze"}
-        </button>
+    <div>
+      <form onSubmit={analyze} className="grid gap-3">
+        <div className="flex gap-2">
+          <input
+            value={url} onChange={e => setUrl(e.target.value)} placeholder="yourbakery.com"
+            aria-label="Company website" autoComplete="url" inputMode="url" disabled={busy}
+            className="input min-w-0 flex-1"
+          />
+          <button type="submit" disabled={busy || !url.trim()} className="btn">
+            {busy ? "Reading…" : "Analyze"}
+          </button>
+        </div>
+        <details className="rounded-lg border border-line px-3 py-2">
+          <summary className="cursor-pointer text-sm font-semibold">
+            Add detail{extras ? ` (${extras} added)` : ""} <span className="font-normal text-muted">— name, competitors, what eats your time, documents. All optional.</span>
+          </summary>
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="field">
+                <span>Business name <em>(optional)</em></span>
+                <input className="input" value={name} onChange={e => setName(e.target.value)} disabled={busy} autoComplete="organization" />
+              </label>
+              <label className="field">
+                <span>Competitors&apos; websites <em>(optional)</em></span>
+                <input className="input" placeholder="rival.com, another.com" value={competitors} onChange={e => setCompetitors(e.target.value)} disabled={busy} />
+              </label>
+            </div>
+            <label className="field">
+              <span>What takes up the most time right now? <em>(optional)</em></span>
+              <textarea className="input" rows={2} placeholder="e.g. answering the same emails about hours and pricing" value={pain} onChange={e => setPain(e.target.value)} disabled={busy} />
+            </label>
+            <label className="field">
+              <span>Documents your website doesn&apos;t cover <em>(optional)</em></span>
+              <input type="file" multiple accept={ACCEPT} className="text-sm" disabled={busy} onChange={e => setFiles(Array.from(e.target.files ?? []).slice(0, 8))} />
+              <span className="text-xs text-muted">
+                {files.length ? files.map(f => f.name).join(", ") : "A menu, price list, policies, or FAQ as PDF, text, Markdown, CSV, or HTML. Up to 8 files, 10 MB each."}
+              </span>
+            </label>
+            <label className="field">
+              <span>Anything else customers should know <em>(optional)</em></span>
+              <textarea className="input" rows={2} placeholder="A few lines: hours, policies, what people always ask" value={notes} onChange={e => setNotes(e.target.value)} disabled={busy} />
+            </label>
+          </div>
+        </details>
+        <p className="text-xs text-muted">Takes about a minute. Nothing is published without you.</p>
       </form>
       {quick && (
-        <div className="mt-8 rounded-md border border-line bg-panel px-5 py-4">
-          <p className="text-sm text-muted">Quick read of the site's structure, before reading a word</p>
+        <div className="mt-6 rounded-md border border-line bg-paper px-5 py-4">
+          <p className="text-sm text-muted">Quick read of the site&apos;s structure, before reading a word</p>
           {quick.template && (
             <p className="display mt-1 text-2xl font-semibold">Likely needs {quick.template.name} <span className="text-muted tabular-nums">({Math.round(quick.template.prob * 100)}%)</span></p>
           )}
@@ -88,7 +135,7 @@ export default function Start() {
         </div>
       )}
       {lines.length > 0 && (() => { const shown = collapse(lines); return (
-        <ul className="mt-8 space-y-2 border-l-2 border-line pl-4 text-muted" aria-live="polite">
+        <ul className="mt-6 space-y-2 border-l-2 border-line pl-4 text-muted" aria-live="polite">
           {shown.map((l, i) => (
             <li key={`${i}-${l.text}`} className={i === shown.length - 1 && busy ? "text-ink" : ""}>
               {l.text}

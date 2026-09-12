@@ -18,6 +18,14 @@ import { extractFeatures } from "./features";
 import { estimate, type Estimate } from "./estimator";
 
 export type Log = (msg: string) => void;
+
+/** What the owner added on the start page beyond the URL. All optional. */
+export type AnalysisInput = {
+  name?: string;              // business name, overrides the title guess
+  pain?: string;              // "what takes up the most time right now"
+  documents?: Source[];       // uploaded files and typed notes, kind "pasted"
+  competitors?: string[];     // competitor site URLs to crawl for the benchmark
+};
 const oneLine = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/\s+/g, " ").slice(0, 80);
 
 // Number the sources so the model can cite by index. Small per-page cap: latency scales with input.
@@ -45,8 +53,10 @@ async function findReviews(name: string, url: string): Promise<Source | null> {
 
 const ProfileAndAssessment = z.object({ profile: Profile, assessment: Assessment });
 
-export async function runAnalysis(runId: ObjectId, url: string, log: Log, onReady?: () => void, onEstimate?: (e: Estimate) => void) {
+export async function runAnalysis(runId: ObjectId, url: string, log: Log, onReady?: () => void, onEstimate?: (e: Estimate) => void, input: AnalysisInput = {}) {
   const t0 = Date.now();
+  const documents = input.documents ?? [];
+  const competitorUrls = input.competitors ?? [];
   const since = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
   const timings: Record<string, number> = {};
   const mark = (k: string) => { timings[k] = Math.round((Date.now() - t0) / 100) / 10; };
@@ -58,10 +68,18 @@ export async function runAnalysis(runId: ObjectId, url: string, log: Log, onRead
   // ---- A + A2: crawl, with the review search running alongside it
   log(`Opening ${url}`);
   let reviews: Promise<Source | null> = Promise.resolve(null);
-  let name = new URL(url).hostname;
+  let name = input.name?.trim() || new URL(url).hostname;
+  // Competitor sites the owner named are read alongside the main crawl; the benchmark uses them at the end.
+  const competitorCrawls = Promise.all(competitorUrls.map(async cu => {
+    try {
+      const r = await scrapeSite(cu, () => {}, { maxPages: 6 });
+      log(`Read ${r.sources.length} page${r.sources.length === 1 ? "" : "s"} from competitor ${new URL(cu).hostname}`);
+      return { url: cu, ...r };
+    } catch { log(`Couldn't read competitor ${new URL(cu).hostname}`); return { url: cu, sources: [] as Source[], colors: [], logo: null, thin: false }; }
+  }));
   const scraped = await scrapeSite(url, log, {
     onHome: title => {
-      name = title.split(/[|–—-]/)[0].trim() || name;
+      if (!input.name?.trim()) name = title.split(/[|–—-]/)[0].trim() || name;
       reviews = findReviews(name, url).catch(e => { log(`No reviews found (${oneLine(e)}), continuing`); return null; });
     },
   });
@@ -74,6 +92,7 @@ export async function runAnalysis(runId: ObjectId, url: string, log: Log, onRead
 
   const rev = await reviews;
   if (rev) { sources.push(rev); log("Found reviews"); }
+  if (documents.length) { sources.push(...documents); log(`Added ${documents.length} document${documents.length === 1 ? "" : "s"} from you: ${documents.map(d => d.title).join(", ")}`); }
   mark("reviews");
 
   // ---- instant estimate from structure alone (only if scripts/train-estimator.py has produced data/estimator.json)
@@ -84,7 +103,7 @@ export async function runAnalysis(runId: ObjectId, url: string, log: Log, onRead
     log(`Quick read of the site's structure: ${t ? `likely needs ${t.name} (${Math.round(t.prob * 100)}%)` : ""}${t && h ? ", " : ""}${h ? `about ${h.value} hours a week` : ""}. Reading the details…`);
     onEstimate?.(quickEstimate);
   }
-  await save({ stage: "scraped", name, sources, brand: { colors, logo }, thin, features, quickEstimate, timings });
+  await save({ stage: "scraped", name, sources, brand: { colors, logo }, thin, features, quickEstimate, timings, input: { name: input.name ?? "", pain: input.pain ?? "", competitors: competitorUrls, documents: documents.map(d => d.title) } });
 
   // ---- B + D: one call. Profile and assessment together; the corpus is sent once.
   log("Reading it all and working out where the week goes");
@@ -94,8 +113,12 @@ Return two things: a short profile of the company, and an assessment.
 
 Template ids you may put in a friction signal's "template" (or null): ${TEMPLATES.map(t => `${t.id} = ${t.name}`).join("; ")}.
 
-Profile: owner language, no jargon. Cite source indices in "sources".
-
+Profile: owner language, no jargon. Cite source indices in "sources".${input.name?.trim() ? ` The business is called "${input.name.trim()}".` : ""}
+${input.pain?.trim() ? `
+The owner says the biggest time sink right now is: "${input.pain.trim().replace(/"/g, "'")}". Look for evidence of this first and include a friction signal for it when the sources support it; if nothing in the sources shows it, still include it with confidence "low" and evidence from the closest page.
+` : ""}${documents.length ? `
+Sources titled "upload:…" or "Notes from the owner" were supplied by the owner (menus, price lists, policies, notes). They count as the business's own material: a question answered there is answerable.
+` : ""}
 Assessment rules:
 - Every strength, weakness and friction signal needs at least one piece of evidence: a short direct quote and the source index it came from. Quote exactly; do not paraphrase.
 - frictionSignals: 3 to 6 things a person does by hand, repeatedly: answering the same questions by phone or email, chasing bookings, refund disputes, replying to reviews, writing listings.
@@ -151,8 +174,23 @@ present (a support assistant needs answerable questions). belowThreshold = true 
   onReady?.();
 
   // ---- C: benchmark, off the critical path. The report is already open; this fills in on refresh.
+  // Competitors the owner named are compared from their own pages, deterministically; otherwise the model searches.
   let benchmark: Benchmark | null = null;
-  try {
+  const rivals = (await competitorCrawls).filter(r => r.sources.length);
+  if (rivals.length) {
+    const you = extractFeatures(sources, thin);
+    benchmark = {
+      you: { hasFaq: !!you.hasFaq, hasOnlineBooking: !!you.hasOnlineBooking, reviewReplyDays: null },
+      competitors: rivals.slice(0, 4).map(r => {
+        const f = extractFeatures(r.sources, r.thin);
+        const title = r.sources[0]?.title?.split(/[|–—-]/)[0].trim();
+        return { name: title || new URL(r.url).hostname, url: r.url, note: "Named by the owner", hasFaq: !!f.hasFaq, hasOnlineBooking: !!f.hasOnlineBooking, reviewReplyDays: null };
+      }),
+    };
+    mark("benchmark");
+    await save({ benchmark, timings });
+    log(`Compared with ${rivals.length} competitor${rivals.length === 1 ? "" : "s"} from their own pages`);
+  } else try {
     const { text } = await generateText(
       `Name up to 3 direct competitors of "${profile.name}" (${profile.offering}; customers: ${profile.customers.join(", ")}). ` +
       `For each: name, website, whether they have an FAQ page, whether they offer online booking, and typical days to reply to reviews if visible. ` +

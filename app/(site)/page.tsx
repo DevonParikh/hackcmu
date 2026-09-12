@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DeflectionBars, HoursLine, StatTiles, TypeBars } from "@/components/LandingCharts";
 import Start from "@/components/Start";
 import { db } from "@/lib/db";
+import { providersConfigured } from "@/lib/llm";
 import { TEMPLATES, type Run } from "@/lib/schemas";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +84,7 @@ export default async function Home() {
   } catch (e) {
     dbError = (e as Error).message;
   }
+  const providers = providersConfigured();
 
   return (
     <main>
@@ -114,6 +116,12 @@ export default async function Home() {
               <li>Self-tested before you see it</li>
               <li>Nothing goes live without you</li>
             </ul>
+            {providers.length === 0 && (
+              <p className="mt-6 rounded-lg px-3 py-2 text-sm" style={{ background: "var(--ochre-soft)", color: "#6b4a10" }}>
+                No AI key is set on this server, so the analysis will stop after reading the site. Whoever set it up can add an Anthropic,
+                Gemini, xAI, or OpenAI-compatible key to .env.local and restart.
+              </p>
+            )}
           </div>
           <div className="hero-form">
             <div className="card p-5 md:p-6">

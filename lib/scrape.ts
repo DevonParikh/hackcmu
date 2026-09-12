@@ -4,7 +4,7 @@
 import * as cheerio from "cheerio";
 import type { Source } from "./schemas";
 
-const MAX_PAGES = 15;
+const DEFAULT_MAX_PAGES = 15;
 const PRIORITY = ["pricing", "price", "plans", "faq", "help", "support", "about", "contact", "services",
                   "menu", "book", "booking", "appointment", "reviews", "testimonials", "shop", "products", "blog"];
 const SKIP = /\.(pdf|jpe?g|png|gif|svg|webp|zip|mp4|mp3|css|js)(\?|$)/i;
@@ -64,8 +64,9 @@ export const rank = (u: string) => {
 export async function scrapeSite(
   startUrl: string,
   log: (m: string) => void,
-  opts: { onHome?: (title: string) => void } = {},
+  opts: { onHome?: (title: string) => void; maxPages?: number } = {},
 ): Promise<{ sources: Source[]; colors: string[]; logo: string | null; thin: boolean }> {
+  const MAX_PAGES = Math.max(1, opts.maxPages ?? DEFAULT_MAX_PAGES);
   const origin = new URL(startUrl).origin;
   const seen = new Set<string>([norm(startUrl)]);
   const sources: Source[] = [];

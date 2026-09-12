@@ -3,10 +3,13 @@
 //   generateText(prompt, { grounding })  → prose; with grounding, the provider searches the web
 //   generateJSON(schema, prompt)          → zod-validated object, one corrective retry per provider
 //
-// Order: every Gemini key in GEMINI_API_KEYS (comma-separated; falls back to GEMINI_API_KEY), then xAI (XAI_API_KEY).
-// A Gemini key that answers 429 "quota" is skipped for the rest of the process. lastProvider() says who answered.
+// Order: Claude (ANTHROPIC_API_KEY) first when configured, then every Gemini key in GEMINI_API_KEYS (comma-separated;
+// falls back to GEMINI_API_KEY), then xAI (XAI_API_KEY), then any OpenAI-compatible endpoint (OPENAI_API_KEY + OPENAI_BASE_URL),
+// then IFM. A provider that answers 429 "quota" is skipped for the rest of the process. lastProvider() says who answered.
 
 import { z } from "zod";
+import { anthropicConfigured, anthropicError, anthropicJSON, anthropicModel, anthropicText } from "./llm-anthropic";
+import { openaiChat, openaiConfigured, openaiModel } from "./llm-openai";
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const clip = (s: string, n = 160) => s.replace(/\s+/g, " ").slice(0, n);
@@ -30,6 +33,17 @@ const xaiModels = () => { const a = process.env.XAI_MODEL ?? "grok-4.20-non-reas
 const dead = new Set<string>();                  // provider ids exhausted this process
 let last = "";
 export const lastProvider = () => last;
+
+/** Human-readable list of the providers this server has keys for, in the order they are tried. Empty means analysis cannot run. */
+export function providersConfigured(): string[] {
+  const out: string[] = [];
+  if (anthropicConfigured()) out.push(`Claude (${anthropicModel()})`);
+  if (geminiKeys().length) out.push(`Gemini (${geminiModels()[0]})`);
+  if (xaiKey()) out.push(`Grok (${xaiModels()[0]})`);
+  if (openaiConfigured()) out.push(`${process.env.OPENAI_BASE_URL ? new URL(process.env.OPENAI_BASE_URL).hostname : "OpenAI"} (${openaiModel()})`);
+  if (ifmKey()) out.push(`IFM (${ifmModel()})`);
+  return out;
+}
 
 // ---------------------------------------------------------------- gemini
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -151,10 +165,17 @@ type TextAttempt = () => Promise<{ text: string; cites: string[] }>;
 
 function textAttempts(prompt: string, opts: { grounding?: boolean; system?: string }): TextAttempt[] {
   const out: TextAttempt[] = [];
+  if (anthropicConfigured() && !dead.has("anthropic"))
+    out.push(async () => {
+      try { const r = await anthropicText(prompt, opts); last = `Claude ${anthropicModel()}${opts.grounding ? " + web search" : ""}`; return r; }
+      catch (e) { throw anthropicError(e, dead); }
+    });
   for (const key of geminiKeys()) for (const model of geminiModels())
     out.push(async () => { const [text, cites] = (await geminiOnce(key, model, geminiBody(prompt, opts))).split("\u0000"); return { text, cites: JSON.parse(cites || "[]") }; });
-  for (const model of xaiModels())
+  if (xaiKey()) for (const model of xaiModels())
     out.push(() => opts.grounding ? xaiSearch(model, prompt) : xaiChat(model, prompt, { system: opts.system }).then(text => ({ text, cites: [] })));
+  if (openaiConfigured() && !opts.grounding)                    // no web search on the generic endpoint; plain text only
+    out.push(() => openaiChat(prompt, { system: opts.system }, dead).then(text => { last = openaiModel(); return { text, cites: [] }; }));
   if (ifmKey() && !opts.grounding)                              // K2 has no web search; plain text only
     out.push(() => ifmChat(prompt, { system: opts.system }).then(text => ({ text, cites: [] })));
   return out;
@@ -162,7 +183,9 @@ function textAttempts(prompt: string, opts: { grounding?: boolean; system?: stri
 
 export async function generateText(prompt: string, opts: { grounding?: boolean; system?: string } = {}): Promise<{ text: string; cites: string[] }> {
   const errors: string[] = [];
-  for (const attempt of textAttempts(prompt, opts)) {
+  const attempts = textAttempts(prompt, opts);
+  if (!attempts.length) throw new Error("No AI provider is configured. Set ANTHROPIC_API_KEY (or GEMINI_API_KEY, XAI_API_KEY, OPENAI_API_KEY) in .env.local and restart.");
+  for (const attempt of attempts) {
     try { return await attempt(); } catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
   }
   throw new Error(`No LLM provider could answer: ${errors.map(e => clip(e, 90)).join(" | ")}`);
@@ -170,14 +193,21 @@ export async function generateText(prompt: string, opts: { grounding?: boolean; 
 
 type JsonAttempt = (prompt: string) => Promise<string>;
 
-function jsonAttempts(opts: { system?: string; prefer?: "ifm" }): { id: string; run: JsonAttempt }[] {
+function jsonAttempts<T>(schema: z.ZodType<T>, opts: { system?: string; prefer?: "ifm" }): { id: string; run: JsonAttempt }[] {
   const out: { id: string; run: JsonAttempt }[] = [];
   const ifm = { id: `IFM ${ifmModel()}`, run: (p: string) => ifmChat(p, { ...opts, json: true }) };
   if (ifmKey() && opts.prefer === "ifm") out.push(ifm);       // the evidence judge runs on K2 first
+  if (anthropicConfigured() && !dead.has("anthropic"))
+    out.push({ id: `Claude ${anthropicModel()}`, run: async p => {
+      try { const r = await anthropicJSON(schema, p, { system: opts.system }); last = `Claude ${anthropicModel()}`; return r; }
+      catch (e) { throw anthropicError(e, dead); }
+    } });
   for (const key of geminiKeys()) for (const model of geminiModels())
     out.push({ id: `Gemini ${model}`, run: async p => (await geminiOnce(key, model, geminiBody(p, { ...opts, json: true }))).split("\u0000")[0] });
-  for (const model of xaiModels())
+  if (xaiKey()) for (const model of xaiModels())
     out.push({ id: `Grok ${model}`, run: p => xaiChat(model, p, { ...opts, json: true }) });
+  if (openaiConfigured())
+    out.push({ id: openaiModel(), run: p => openaiChat(p, { ...opts, json: true }, dead).then(t => { last = openaiModel(); return t; }) });
   if (ifmKey() && opts.prefer !== "ifm") out.push(ifm);
   return out;
 }
@@ -186,7 +216,9 @@ export async function generateJSON<T>(schema: z.ZodType<T>, prompt: string, opts
   const shape = JSON.stringify(z.toJSONSchema(schema));
   const base = `${prompt}\n\nReturn ONLY a JSON object matching this JSON Schema:\n${shape}`;
   const errors: string[] = [];
-  for (const { id, run } of jsonAttempts(opts)) {
+  const attempts = jsonAttempts(schema, opts);
+  if (!attempts.length) throw new Error("No AI provider is configured. Set ANTHROPIC_API_KEY (or GEMINI_API_KEY, XAI_API_KEY, OPENAI_API_KEY) in .env.local and restart.");
+  for (const { id, run } of attempts) {
     let feedback = "";
     for (let i = 0; i < 2; i++) {                                   // second try shows the model its validation error
       let raw: string;

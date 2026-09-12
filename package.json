@@ -20,6 +20,7 @@
     "check": "npm run test:parse && npm run demo -- --text"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
     "cheerio": "^1.2.0",
@@ -31,6 +32,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "recharts": "^3.10.1",
+    "unpdf": "^1.8.1",
     "zod": "^4.6.2"
   },
   "devDependencies": {
