@@ -6,11 +6,7 @@
       "dom.iterable",
       "esnext"
     ],
-<<<<<<< HEAD
     "allowJs": true,
-=======
-    "allowJs": false,
->>>>>>> origin/devon
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
@@ -28,35 +24,22 @@
     ],
     "paths": {
       "@/*": [
-<<<<<<< HEAD
         "./*"
-=======
-        "./src/*"
->>>>>>> origin/devon
       ]
     }
   },
   "include": [
     "next-env.d.ts",
-<<<<<<< HEAD
     "app/**/*",
     "components/**/*",
     "lib/**/*",
     "next.config.ts",
-=======
-    "**/*.ts",
-    "**/*.tsx",
->>>>>>> origin/devon
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-<<<<<<< HEAD
     "money",
     "prototype"
-=======
-    "scripts"
->>>>>>> origin/devon
   ]
 }
