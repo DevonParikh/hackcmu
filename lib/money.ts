@@ -36,14 +36,14 @@ export type RefundResult = {
 };
 
 // The tool asked for a refund. Build it, sign as delegate, send. The chain decides.
-export async function refund(args: { to: string; amount: number; reason: string; slug: string; asked: string }): Promise<RefundResult> {
+export async function refund(args: { to: string; amount: number; reason: string; slug: string; asked: string; parser?: string }): Promise<RefundResult> {
   const core = await money(); if (!core) throw new Error("Refunds aren't configured on this machine (no agent keypair).");
   const r = core.resolveRecipient(args.to);
   if (!r) throw new Error(`Unknown wallet: ${args.to}`);
   const raw = BigInt(Math.round(args.amount * Number(core.UNIT)));
   const before = await core.getState();
   const p = {
-    input: args.asked, intent: { to: args.to, amount: args.amount, parser: "tool" },
+    input: args.asked, intent: { to: args.to, amount: args.amount, parser: args.parser ?? "model" },
     rcpt: { label: r.label, spoken: r.spoken, ata: r.ata.toBase58(), owner: r.owner?.toBase58() ?? null },
     rawStr: raw.toString(), amount: core.fmt(raw), balance: before.balance, allowance: before.allowance, after: null, simulated: "unknown",
   };
