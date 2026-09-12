@@ -2,7 +2,7 @@
 
 Paste a company's website. Tailor reads the site, compares it with competitors, shows what is working and what is not with evidence, ranks six deployable AI tool templates, then builds, self-tests, and hosts the best fit with a one-line embed.
 
-Built for HackCMU. Plan and rationale: [CLAUDE.md](CLAUDE.md).
+Built for HackCMU. Plan and rationale: [docs/TAILOR.md](docs/TAILOR.md).
 
 ## What it does
 
