@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f3f5f2;
+  --ink: #17212b;
+  --muted: #66717c;
+  --rule: #d5dad6;
+  --panel: #ffffff;
+  --accent: #0e6b60;
+  --accent-soft: #ddeeea;
+  --ochre: #b9791e;
+  --ochre-soft: #f6ead3;
+  --good: #2e7d4f;
+  --bad: #b23a3a;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
+.eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.btn { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #fff; border-radius: 8px; padding: 10px 16px; font-weight: 600; font-size: 14px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn, .btn-ghost, button { cursor: pointer; }
+.btn-ghost:hover { background: var(--paper); }
+.btn-ghost { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 9px 14px; font-weight: 600; font-size: 14px; }
+.input { width: 100%; border: 1px solid var(--rule); background: var(--panel); border-radius: 8px; padding: 10px 12px; font-size: 15px; }
+.input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--rule); background: var(--panel); }
+.chip-good { background: #e3f3e8; border-color: #bfe0ca; color: var(--good); }
+.chip-bad { background: #f9e3e3; border-color: #efc4c4; color: var(--bad); }
+.chip-accent { background: var(--accent-soft); border-color: #b9dbd4; color: var(--accent); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+/* Badges every number wears */
+.badge { display: inline-block; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--rule); color: var(--muted); background: var(--panel); vertical-align: middle; }
+.badge[data-kind="site"], .badge[data-kind="file"] { color: var(--accent); border-color: #b9dbd4; background: var(--accent-soft); }
+.badge[data-kind="you"] { color: #6b4a10; border-color: #e6cf9a; background: var(--ochre-soft); }
+.badge[data-kind="tested"], .badge[data-kind="measured"] { color: var(--good); border-color: #bfe0ca; background: #e3f3e8; }
+.badge[data-kind="estimate"] { color: var(--muted); border-style: dashed; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+.chart-scroll { overflow-x: auto; max-width: 100%; }
+.chart-scroll svg { display: block; max-width: none; }
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+.section-title { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.lede { color: var(--muted); font-size: 14px; max-width: 70ch; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+
+/* Grid and flex children must be allowed to shrink, or wide charts push the page sideways on phones. */
+.grid > *, .flex > * { min-width: 0; }
+main, section { min-width: 0; max-width: 100%; }
