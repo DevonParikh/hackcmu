@@ -24,22 +24,28 @@ export async function POST(req: NextRequest) {
   const { insertedId } = await runs.insertOne({ url: start.href, stage: "started", createdAt: new Date() });
 
   const enc = new TextEncoder();
+  let open = true;
   const stream = new ReadableStream({
     async start(ctrl) {
-      const send = (event: string, data: unknown) =>
-        ctrl.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      // The client navigates to the report on "done" while the benchmark stage is still running,
+      // so every send tolerates a closed stream.
+      const send = (event: string, data: unknown) => {
+        if (!open) return;
+        try { ctrl.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)); } catch { open = false; }
+      };
       send("run", { id: insertedId.toString() });
       try {
-        await runAnalysis(insertedId, start.href, m => send("log", { m }));
-        send("done", { id: insertedId.toString() });
+        await runAnalysis(insertedId, start.href, m => send("log", { m }), () => send("done", { id: insertedId.toString() }));
       } catch (e: unknown) {
         const m = e instanceof Error ? e.message : String(e);
         await runs.updateOne({ _id: insertedId }, { $set: { stage: "failed", error: m } });
         send("error", { m });
       } finally {
-        ctrl.close();
+        if (open) { try { ctrl.close(); } catch {} }
+        open = false;
       }
     },
+    cancel() { open = false; },
   });
   return new Response(stream, {
     headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" },

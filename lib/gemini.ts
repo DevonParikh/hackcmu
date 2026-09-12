@@ -25,11 +25,19 @@ async function call(body: Body): Promise<any> {
   let last: Error = new Error("Gemini: no attempts made");
   for (const model of models()) {
     for (let i = 0; i < 3; i++) {                       // 3 tries per model: 1.5s, 3s, 6s between
-      const r = await fetch(`${BASE}/${model}:generateContent`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify(body),
-      });
+      let r: Response;
+      try {
+        r = await fetch(`${BASE}/${model}:generateContent`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(30_000),          // a hung call fails fast into the retry
+        });
+      } catch (e) {
+        last = new Error(`Gemini timeout/network (${model}): ${e instanceof Error ? e.message : String(e)}`);
+        await sleep(1500 * 2 ** i);
+        continue;
+      }
       if (r.ok) return r.json();
       last = new Error(`Gemini ${r.status} (${model}): ${(await r.text()).replace(/\s+/g, " ").slice(0, 160)}`);
       if (r.status === 404) break;                      // unknown model name: try the next model

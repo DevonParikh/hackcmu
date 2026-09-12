@@ -135,6 +135,7 @@ export type Run = {
   verification?: VerifyReport;
   thin?: boolean;
   ranking?: Ranking;
+  timings?: Record<string, number>;   // seconds since start, per stage
   createdAt: Date;
   updatedAt?: Date;
   finishedAt?: Date;

@@ -77,6 +77,7 @@ export default async function Report({ params }: { params: Promise<{ id: string 
           </h1>
           <p className="mt-4 max-w-md text-muted">
             The biggest one: {signals[0].task}. Estimated from {src.length} sources; every number below links to where it came from.
+            {run.timings?.rank != null && <> Analysed in {Math.round(run.timings.rank)} seconds.</>}
           </p>
         </header>
       )}
@@ -140,6 +141,10 @@ export default async function Report({ params }: { params: Promise<{ id: string 
             </tbody>
           </table>
         </section>
+      )}
+
+      {run.stage === "ranked" && !run.benchmark && (
+        <p className="mt-16 border-t border-line pt-8 text-sm text-muted">Still looking at nearby competitors — refresh in a moment.</p>
       )}
 
       {/* ---- strengths / weaknesses */}

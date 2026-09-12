@@ -9,7 +9,8 @@ const PRIORITY = ["pricing", "price", "plans", "faq", "help", "support", "about"
                   "menu", "book", "booking", "appointment", "reviews", "testimonials", "shop", "products", "blog"];
 const SKIP = /\.(pdf|jpe?g|png|gif|svg|webp|zip|mp4|mp3|css|js)(\?|$)/i;
 const JUNK = /\/(terms|terms-of-service|terms-and-conditions|privacy|privacy-policy|cookie|cookies|cookies-policy|accessibility|legal|login|log-in|signin|sign-in|signup|sign-up|register|cart|checkout|account|my-account|wp-admin|wp-login|feed|tag|tags|category|author|search|sitemap)(\/|$|\?)/i;
-const PER_SECTION = 3;                                 // at most this many pages under one first path segment
+const PER_SECTION = 3;
+const CONCURRENCY = 5;                                 // pages fetched at once                                 // at most this many pages under one first path segment
 
 async function get(url: string, ms = 8000): Promise<string | null> {
   try {
@@ -60,47 +61,67 @@ export const rank = (u: string) => {
   return depth(u) * 10 + (i === -1 ? 9 : Math.min(i, 8));
 };
 
-export async function scrapeSite(startUrl: string, log: (m: string) => void)
-  : Promise<{ sources: Source[]; colors: string[]; logo: string | null; thin: boolean }> {
+export async function scrapeSite(
+  startUrl: string,
+  log: (m: string) => void,
+  opts: { onHome?: (title: string) => void } = {},
+): Promise<{ sources: Source[]; colors: string[]; logo: string | null; thin: boolean }> {
   const origin = new URL(startUrl).origin;
-  const seen = new Set<string>();
-  const queue: string[] = [startUrl];
+  const seen = new Set<string>([norm(startUrl)]);
   const sources: Source[] = [];
   const perSection = new Map<string, number>();
+  let frontier: string[] = [];
   let colors: string[] = [];
   let logo: string | null = null;
-  let thin = false;                                  // big HTML, almost no text → rendered with JavaScript
+  let thin = false;
 
-  while (queue.length && sources.length < MAX_PAGES) {
-    const url = queue.shift()!;
-    if (seen.has(norm(url))) continue;
-    seen.add(norm(url));
-    const sec = section(url);
-    if (sec && (perSection.get(sec) ?? 0) >= PER_SECTION) continue;
-    const html = await get(url);
-    if (!html) continue;
-    const { title, text } = pageText(html);
-    if (sources.length === 0 && html.length > 40_000 && text.length < 500) thin = true;
-    if (text.length < 200) continue;
-    sources.push({ url, title, kind: "page", text });
-    if (sec) perSection.set(sec, (perSection.get(sec) ?? 0) + 1);
-    log(`Reading ${title || url}`);
-
+  const collectLinks = (html: string, base: string) => {
     const $ = cheerio.load(html);
-    if (sources.length === 1) {
-      colors = brandColors(html);
-      const raw = $('link[rel~="icon"]').attr("href") ?? $('meta[property="og:image"]').attr("content") ?? null;
-      if (raw) { try { logo = new URL(raw, url).href; } catch { logo = null; } }
-    }
-    const links: string[] = [];
     $("a[href]").each((_, a) => {
       try {
-        const u = new URL($(a).attr("href")!, url);
-        if (u.origin === origin && !SKIP.test(u.pathname) && !JUNK.test(u.pathname + "/") && !seen.has(norm(u.href))) links.push(u.href);
+        const u = new URL($(a).attr("href")!, base);
+        if (u.origin === origin && !SKIP.test(u.pathname) && !JUNK.test(u.pathname + "/") && !seen.has(norm(u.href))) {
+          seen.add(norm(u.href));
+          frontier.push(u.href);
+        }
       } catch { /* ignore bad hrefs */ }
     });
-    queue.push(...links);
-    queue.sort((a, b) => rank(a) - rank(b));               // re-sort the whole frontier: shallow, useful pages first
+    frontier.sort((a, b) => rank(a) - rank(b));            // shallow, useful pages first
+  };
+
+  const accept = (url: string, html: string): boolean => {
+    const { title, text } = pageText(html);
+    if (sources.length === 0 && html.length > 40_000 && text.length < 500) thin = true;
+    if (text.length < 200) return false;
+    const sec = section(url);
+    if (sec && (perSection.get(sec) ?? 0) >= PER_SECTION) return false;
+    if (sec) perSection.set(sec, (perSection.get(sec) ?? 0) + 1);
+    sources.push({ url, title, kind: "page", text });
+    log(`Reading ${title || url}`);
+    return true;
+  };
+
+  // home page first, alone: it seeds the frontier, the brand, and the review search
+  const home = await get(startUrl);
+  if (!home) return { sources, colors, logo, thin };
+  accept(startUrl, home);
+  colors = brandColors(home);
+  {
+    const $ = cheerio.load(home);
+    const raw = $('link[rel~="icon"]').attr("href") ?? $('meta[property="og:image"]').attr("content") ?? null;
+    if (raw) { try { logo = new URL(raw, startUrl).href; } catch { logo = null; } }
+    opts.onHome?.(sources[0]?.title ?? "");
+  }
+  collectLinks(home, startUrl);
+
+  // then the rest, several at a time, re-sorting the frontier as new links come in
+  while (frontier.length && sources.length < MAX_PAGES) {
+    const batch = frontier.splice(0, Math.min(CONCURRENCY, MAX_PAGES - sources.length));
+    const pages = await Promise.all(batch.map(async url => ({ url, html: await get(url, 6000) })));
+    for (const { url, html } of pages) {
+      if (!html || sources.length >= MAX_PAGES) continue;
+      if (accept(url, html)) collectLinks(html, url);
+    }
   }
   return { sources, colors, logo, thin };
 }
