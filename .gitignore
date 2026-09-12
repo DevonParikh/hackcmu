@@ -7,3 +7,5 @@ keys/
 .env
 attempts.jsonl
 data/*.pkl
+data/judge-ce/
+attempts.jsonl
