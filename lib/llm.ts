@@ -22,6 +22,9 @@ function geminiModels(): string[] {
   return a === b ? [a] : [a, b];
 }
 const xaiKey    = () => process.env.XAI_API_KEY;
+const ifmKey    = () => process.env.IFM_API_KEY;
+const ifmBase   = () => (process.env.IFM_BASE_URL ?? "https://platform.ifm.ai/v1").replace(/\/$/, "");
+const ifmModel  = () => process.env.IFM_MODEL ?? "IFM/K2-Horizon-7B";
 const xaiModels = () => { const a = process.env.XAI_MODEL ?? "grok-4.20-non-reasoning"; return a === "grok-4.3" ? [a] : [a, "grok-4.3"]; };
 
 const dead = new Set<string>();                  // provider ids exhausted this process
@@ -89,6 +92,38 @@ async function xaiChat(model: string, prompt: string, opts: { json?: boolean; sy
   return data?.choices?.[0]?.message?.content ?? "";
 }
 
+// ---------------------------------------------------------------- ifm (K2 Horizon), OpenAI-compatible
+// K2 returns its thinking in reasoning_content and the answer in content. reasoning_effort is passed through
+// chat_template_kwargs where the gateway supports it; if the gateway rejects extras, retry plain.
+async function ifmChat(prompt: string, opts: { json?: boolean; system?: string }): Promise<string> {
+  const key = ifmKey(); if (!key) throw new Error("IFM_API_KEY not set");
+  if (dead.has("ifm")) throw new Error("ifm exhausted");
+  const model = ifmModel();
+  const messages = [...(opts.system ? [{ role: "system", content: opts.system }] : []), { role: "user", content: prompt }];
+  const bodies: Record<string, unknown>[] = [
+    { model, messages, temperature: opts.json ? 0 : 0.2, max_tokens: 4096, chat_template_kwargs: { reasoning_effort: "low" }, ...(opts.json ? { response_format: { type: "json_object" } } : {}) },
+    { model, messages, temperature: opts.json ? 0 : 0.2, max_tokens: 4096 },   // plain, for strict gateways
+  ];
+  let lastErr = new Error("ifm: no attempts");
+  for (const body of bodies) {
+    const r = await fetch(`${ifmBase()}/chat/completions`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(60_000),
+    });
+    if (r.ok) {
+      const data = await r.json();
+      last = `IFM ${model}`;
+      const m = data?.choices?.[0]?.message ?? {};
+      return (m.content ?? "").trim() || (m.reasoning_content ?? "");
+    }
+    const text = await r.text();
+    lastErr = new Error(`IFM ${r.status} (${model}): ${clip(text)}`);
+    if (r.status === 429 && /quota|billing|credit/i.test(text)) { dead.add("ifm"); throw lastErr; }
+    if (r.status !== 400) throw lastErr;                        // only a 400 (unknown field) earns the plain retry
+  }
+  throw lastErr;
+}
+
 // Web search is only on the Responses endpoint.
 async function xaiSearch(model: string, prompt: string): Promise<{ text: string; cites: string[] }> {
   const key = xaiKey(); if (!key) throw new Error("XAI_API_KEY not set");
@@ -120,6 +155,8 @@ function textAttempts(prompt: string, opts: { grounding?: boolean; system?: stri
     out.push(async () => { const [text, cites] = (await geminiOnce(key, model, geminiBody(prompt, opts))).split("\u0000"); return { text, cites: JSON.parse(cites || "[]") }; });
   for (const model of xaiModels())
     out.push(() => opts.grounding ? xaiSearch(model, prompt) : xaiChat(model, prompt, { system: opts.system }).then(text => ({ text, cites: [] })));
+  if (ifmKey() && !opts.grounding)                              // K2 has no web search; plain text only
+    out.push(() => ifmChat(prompt, { system: opts.system }).then(text => ({ text, cites: [] })));
   return out;
 }
 
@@ -133,16 +170,19 @@ export async function generateText(prompt: string, opts: { grounding?: boolean; 
 
 type JsonAttempt = (prompt: string) => Promise<string>;
 
-function jsonAttempts(opts: { system?: string }): { id: string; run: JsonAttempt }[] {
+function jsonAttempts(opts: { system?: string; prefer?: "ifm" }): { id: string; run: JsonAttempt }[] {
   const out: { id: string; run: JsonAttempt }[] = [];
+  const ifm = { id: `IFM ${ifmModel()}`, run: (p: string) => ifmChat(p, { ...opts, json: true }) };
+  if (ifmKey() && opts.prefer === "ifm") out.push(ifm);       // the evidence judge runs on K2 first
   for (const key of geminiKeys()) for (const model of geminiModels())
     out.push({ id: `Gemini ${model}`, run: async p => (await geminiOnce(key, model, geminiBody(p, { ...opts, json: true }))).split("\u0000")[0] });
   for (const model of xaiModels())
     out.push({ id: `Grok ${model}`, run: p => xaiChat(model, p, { ...opts, json: true }) });
+  if (ifmKey() && opts.prefer !== "ifm") out.push(ifm);
   return out;
 }
 
-export async function generateJSON<T>(schema: z.ZodType<T>, prompt: string, opts: { system?: string } = {}): Promise<T> {
+export async function generateJSON<T>(schema: z.ZodType<T>, prompt: string, opts: { system?: string; prefer?: "ifm" } = {}): Promise<T> {
   const shape = JSON.stringify(z.toJSONSchema(schema));
   const base = `${prompt}\n\nReturn ONLY a JSON object matching this JSON Schema:\n${shape}`;
   const errors: string[] = [];

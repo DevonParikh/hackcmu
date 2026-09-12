@@ -119,6 +119,7 @@ ${corpus(sources)}`);
   try {
     const pairs = final.frictionSignals.flatMap(f => f.evidence.map(e => ({ claim: f.task, quote: e.quote })));
     const verdicts = await judgeRelevance(pairs);
+    log(`Evidence judged by ${process.env.JUDGE_URL ? "our fine-tuned judge" : lastProvider()}`);
     judgePairs = pairs.map((p, i) => ({ ...p, verdict: verdicts[i] }));   // labeled pairs: training data for a local judge
     const judged = applyVerdicts(final.frictionSignals, verdicts, report);
     if (judged.length) final = { ...final, frictionSignals: judged };

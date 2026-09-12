@@ -129,7 +129,7 @@ export async function judgeRelevance(pairs: { claim: string; quote: string }[]):
 - "unrelated": the quote has nothing to do with the claim.
 A menu item does not demonstrate that customers phone about the menu. Return exactly ${pairs.length} verdicts, in order.
 
-${pairs.map((p, i) => `${i + 1}. CLAIM: ${p.claim}\n   QUOTE: ${p.quote}`).join("\n")}`);
+${pairs.map((p, i) => `${i + 1}. CLAIM: ${p.claim}\n   QUOTE: ${p.quote}`).join("\n")}`, { prefer: "ifm" });
   return pairs.map((_, i) => res.verdicts[i] ?? "suggests");
 }
 
