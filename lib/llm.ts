@@ -49,7 +49,8 @@ export function providersConfigured(): string[] {
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta/models";
 
 async function geminiOnce(key: string, model: string, body: Record<string, unknown>): Promise<string> {
-  const id = `gemini:${key.slice(-6)}`;
+  // Grounded (Google Search) calls have their own quota, often zero on free keys: track them apart from plain calls.
+  const id = `gemini:${key.slice(-6)}${Array.isArray(body.tools) && body.tools.length ? ":search" : ""}`;
   if (dead.has(id)) throw new Error(`${id} exhausted`);
   let lastErr = new Error("gemini: no attempts");
   for (let i = 0; i < 2; i++) {
@@ -68,7 +69,7 @@ async function geminiOnce(key: string, model: string, body: Record<string, unkno
     }
     const text = await r.text();
     lastErr = new Error(`Gemini ${r.status} (${model}): ${clip(text)}`);
-    if (r.status === 429 && /quota|billing/i.test(text)) { dead.add(id); throw lastErr; }   // daily cap: this key is done
+    if (r.status === 429 && /quota|billing/i.test(text)) { dead.add(id); throw lastErr; }   // daily cap or a zero quota: this key is done for this kind of call
     if (r.status === 404) throw lastErr;                                                   // wrong model name: don't retry
     if (r.status < 500 && r.status !== 429) throw lastErr;                                 // bad request won't improve
     await sleep(r.status === 429 ? 5000 : 1500 * (i + 1));
