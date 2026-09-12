@@ -18,6 +18,7 @@ export type Source = z.infer<typeof Source>;
 export const Evidence = z.object({
   quote: z.string().describe("short direct quote from the source"),
   source: z.number().int().nonnegative().describe("index into sources[]"),
+  kind: z.enum(["demonstrates", "suggests"]).optional().describe("set by the relevance judge, not the model"),
 });
 export type Evidence = z.infer<typeof Evidence>;
 
@@ -71,6 +72,7 @@ export const templateById = (id: string) => TEMPLATES.find(t => t.id === id);
 // Feeds C1 (frictionSignals) and C2 (coverage).
 export const FrictionSignal = z.object({
   task: z.string().describe("a repetitive thing a person does by hand, in the owner's words"),
+  label: z.string().max(48).describe("the same task in 3 to 5 words, for a chart axis"),
   who: z.string().describe("who does it: owner, front desk, whoever answers email"),
   hoursPerWeek: z.number().min(0).max(80).describe("ESTIMATE, derived from evidence, conservative"),
   confidence: Confidence,
@@ -113,6 +115,11 @@ export const Ranking = z.object({
 });
 export type Ranking = z.infer<typeof Ranking>;
 
+export type VerifyReport = {
+  checked: number; kept: number; reindexed: number; dropped: number;
+  itemsDropped: number; downgraded: number; clamped: number; judged: number; unrelated: number;
+};
+
 // ---------------------------------------------------------------- the run document (Mongo `runs`)
 export type Run = {
   _id?: unknown;
@@ -125,6 +132,8 @@ export type Run = {
   profile?: Profile;
   benchmark?: Benchmark | null;
   assessment?: Assessment;
+  verification?: VerifyReport;
+  thin?: boolean;
   ranking?: Ranking;
   createdAt: Date;
   updatedAt?: Date;

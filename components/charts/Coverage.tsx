@@ -1,19 +1,28 @@
 "use client";
-// C2 — What customers ask vs. what your site answers. Two numbers and one bar.
+// C2 — What customers ask vs. what the site answers. The questions themselves are the chart.
 
-export default function Coverage({ total, answerable }: { total: number; answerable: number }) {
-  if (!total) return null;
-  const pct = Math.round((answerable / total) * 100);
+export type Q = { text: string; answerable: boolean };
+
+export default function Coverage({ questions, accent }: { questions: Q[]; accent: string }) {
+  if (!questions.length) return null;
+  const answered = questions.filter(q => q.answerable);
+  const missing = questions.filter(q => !q.answerable);
   return (
     <div>
-      <div className="flex items-baseline gap-6">
-        <div><div className="text-5xl font-semibold tabular-nums">{total}</div><div className="text-muted">questions customers ask</div></div>
-        <div><div className="text-5xl font-semibold tabular-nums">{answerable}</div><div className="text-muted">answered by your site today</div></div>
-      </div>
-      <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-line" role="img" aria-label={`${pct}% of questions answerable from the site`}>
-        <div className="h-full bg-green" style={{ width: `${pct}%` }} />
-      </div>
-      <p className="mt-1 text-sm text-muted">{pct}% covered. The rest becomes an email, a call, or a lost customer.</p>
+      <ul className="flex flex-wrap gap-2">
+        {[...missing, ...answered].map((q, i) => (
+          <li key={i}
+            className={`max-w-full truncate rounded-full border px-3 py-1 text-sm ${q.answerable ? "border-line text-muted" : "text-white"}`}
+            style={q.answerable ? undefined : { background: accent, borderColor: accent }}
+            title={q.text}>
+            {q.text}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 text-sm text-muted">
+        <span className="inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: accent }} /> {missing.length} the site can't answer
+        <span className="ml-4 inline-block h-2.5 w-2.5 rounded-full border border-line align-middle" /> {answered.length} it can
+      </p>
     </div>
   );
 }

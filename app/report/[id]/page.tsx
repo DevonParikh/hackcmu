@@ -1,9 +1,11 @@
-// Screen 2 (report) and the top of Screen 3 (the plan). Graphs first, bullets second, every chip a link.
+// Screen 2 (report) and the top of Screen 3 (the plan).
+// The finding is the hero. The business's own colour is the accent. Every number shows its evidence.
 
 import { ObjectId } from "mongodb";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { templateById, type Run, type Evidence } from "@/lib/schemas";
+import { safeAccent, roundHalf } from "@/lib/brand";
 import TimeSink from "@/components/charts/TimeSink";
 import Coverage from "@/components/charts/Coverage";
 import BeforeAfter from "@/components/charts/BeforeAfter";
@@ -11,79 +13,128 @@ import HowItFits from "@/components/diagrams/HowItFits";
 
 export const dynamic = "force-dynamic";
 
-const dot: Record<string, string> = { low: "bg-line", medium: "bg-blue/60", high: "bg-blue" };
+const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
 
 export default async function Report({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   let run: Run | null = null;
   try { run = (await (await db()).collection("runs").findOne({ _id: new ObjectId(id) })) as Run | null; } catch {}
-  if (!run) return <main className="mx-auto max-w-2xl px-6 py-16">That report doesn't exist. <Link href="/" className="text-blue underline">Start over</Link></main>;
-
-  const src = run.sources ?? [];
-  const Chip = ({ e }: { e: Evidence }) => {
-    const s = src[e.source];
-    const inner = <span className="inline-block max-w-full truncate rounded-md border border-line bg-panel px-2 py-0.5 text-sm text-muted align-middle">“{e.quote}”</span>;
-    return s?.url && /^https?:/.test(s.url) ? <a href={s.url} target="_blank" rel="noopener" className="max-w-full">{inner}</a> : inner;
-  };
-
+  if (!run) return (
+    <main className="mx-auto max-w-2xl px-6 py-24">
+      <p>That report doesn't exist.</p>
+      <Link href="/" className="underline">Start over</Link>
+    </main>
+  );
   if (run.stage === "failed") return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
+    <main className="mx-auto max-w-2xl px-6 py-24">
       <p>We couldn't finish reading that site: {run.error}</p>
-      <Link href="/" className="text-blue underline">Try another</Link>
+      <Link href="/" className="mt-4 inline-block underline">Try another</Link>
     </main>
   );
 
   const a = run.assessment, r = run.ranking, p = run.profile;
+  const company = p?.name || run.name || host(run.url);
+  const accent  = safeAccent(run.brand?.colors?.[0]);
+  const src     = run.sources ?? [];
+  const signals = a ? [...a.frictionSignals].sort((x, y) => y.hoursPerWeek - x.hoursPerWeek) : [];
+  const totalHours = roundHalf(signals.reduce((s, f) => s + f.hoursPerWeek, 0));
   const top = r?.top[0];
   const tpl = top ? templateById(top.template) : undefined;
-  const company = run.name ?? p?.name ?? new URL(run.url).hostname;
+
+  const Quote = ({ e }: { e: Evidence }) => {
+    const s = src[e.source];
+    const q = e.quote.length > 110 ? e.quote.slice(0, 108).trimEnd() + "…" : e.quote;
+    const where = s ? (s.kind === "review" ? "reviews" : host(s.url)) : "";
+    const tag = e.kind === "demonstrates" ? "shows it" : e.kind === "suggests" ? "suggests it" : "";
+    const body = <>“{q}”{where && <span className="text-muted"> — {where}</span>}{tag && <span className="ml-2 text-xs text-muted">{tag}</span>}</>;
+    return (
+      <li className="text-[15px] leading-relaxed">
+        {s?.url && /^https?:/.test(s.url)
+          ? <a href={s.url} target="_blank" rel="noopener" className="hover:underline">{body}</a>
+          : body}
+      </li>
+    );
+  };
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-14">
-      <p className="text-muted"><Link href="/" className="underline">Tailor</Link> · <a href={run.url} target="_blank" rel="noopener" className="underline">{new URL(run.url).hostname}</a></p>
-      <h1 className="mt-2 text-3xl font-semibold">{company}</h1>
-      {p && <p className="mt-2 max-w-lg text-muted">{p.offering}</p>}
-      {run.stage !== "ranked" && <p className="mt-6 rounded-md border border-line bg-panel p-4 text-muted">Still reading… refresh in a moment. Stage: {run.stage}.</p>}
+    <main className="mx-auto max-w-2xl px-6 pt-16 pb-32" style={{ ["--accent" as string]: accent }}>
+      <p className="text-muted">
+        <Link href="/" className="hover:underline">Tailor</Link> report for <a href={run.url} target="_blank" rel="noopener" className="text-ink hover:underline">{company}</a>
+      </p>
 
+      {run.stage !== "ranked" && (
+        <p className="mt-6 text-muted">Still reading… refresh in a moment. ({run.stage})</p>
+      )}
+      {run.thin && (
+        <p className="mt-6 max-w-md text-muted">This site draws most of its content with JavaScript, so we had less to go on than usual. Treat the estimates as rough.</p>
+      )}
+
+      {/* ---- the finding */}
+      {signals.length > 0 && (
+        <header className="mt-8">
+          <h1 className="display text-[clamp(32px,5.6vw,52px)] font-semibold leading-[1.05]">
+            About <span className="tnum" style={{ color: accent }}>{totalHours} hours</span> a week go to things a small AI tool could do.
+          </h1>
+          <p className="mt-4 max-w-md text-muted">
+            The biggest one: {signals[0].task}. Estimated from {src.length} sources; every number below links to where it came from.
+          </p>
+        </header>
+      )}
+
+      {/* ---- C1 */}
       {a && (
-        <section className="mt-12">
-          <h2 className="text-lg font-medium">Where {company}'s week goes</h2>
-          <div className="mt-4"><TimeSink rows={a.frictionSignals} /></div>
-          <ul className="mt-6 space-y-3">
-            {[...a.frictionSignals].sort((x, y) => y.hoursPerWeek - x.hoursPerWeek).map(f => (
-              <li key={f.task} className="flex flex-wrap items-center gap-2">
-                <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot[f.confidence]}`} title={`${f.confidence} confidence`} aria-label={`${f.confidence} confidence`} />
-                <span className="font-medium">{f.task}</span>
-                <span className="text-muted">— {f.who}</span>
-                {f.evidence.slice(0, 2).map((e, i) => <Chip key={i} e={e} />)}
+        <section className="mt-16 border-t border-line pt-8">
+          <h2 className="display text-[22px] font-medium">Where the week goes</h2>
+          <div className="mt-5"><TimeSink rows={signals} accent={accent} /></div>
+          <p className="text-sm text-muted">
+            Hours per week, estimated. Confidence is earned: high needs two sources showing the task happening.
+            {run.verification && ` Every quote was checked against its source — ${run.verification.checked} checked, ${run.verification.dropped} dropped.`}
+          </p>
+          <ol className="mt-8 space-y-7">
+            {signals.map(f => (
+              <li key={f.task}>
+                <p className="font-medium leading-snug">{f.task}</p>
+                <p className="mt-1 text-sm text-muted">{f.who} · estimate, {f.confidence} confidence</p>
+                <ul className="mt-2 space-y-1 border-l-2 pl-3" style={{ borderColor: accent }}>
+                  {f.evidence.slice(0, 2).map((e, i) => <Quote key={i} e={e} />)}
+                </ul>
               </li>
             ))}
-          </ul>
+          </ol>
         </section>
       )}
 
-      {a && (
-        <section className="mt-12">
-          <h2 className="text-lg font-medium">What customers ask, and what the site answers</h2>
-          <div className="mt-4"><Coverage total={a.coverage.questions.length} answerable={a.coverage.questions.filter(q => q.answerable).length} /></div>
-          <details className="mt-3 text-sm text-muted"><summary className="cursor-pointer">See the questions</summary>
-            <ul className="mt-2 grid gap-1 sm:grid-cols-2">{a.coverage.questions.map((q, i) => <li key={i} className={q.answerable ? "" : "text-red"}>{q.answerable ? "✓" : "✗"} {q.text}</li>)}</ul>
-          </details>
+      {/* ---- C2 */}
+      {a && a.coverage.questions.length > 0 && (
+        <section className="mt-16 border-t border-line pt-8">
+          <h2 className="display text-[22px] font-medium">
+            Customers ask about {a.coverage.questions.length} things. The site answers {a.coverage.questions.filter(q => q.answerable).length}.
+          </h2>
+          <p className="mt-2 mb-6 max-w-md text-muted">The rest becomes a phone call, an email, or a customer who goes elsewhere.</p>
+          <Coverage questions={a.coverage.questions} accent={accent} />
         </section>
       )}
 
+      {/* ---- C3 */}
       {run.benchmark && run.benchmark.competitors.length > 0 && (
-        <section className="mt-12">
-          <h2 className="text-lg font-medium">You and nearby competitors</h2>
-          <table className="mt-4 w-full text-sm">
-            <thead><tr className="text-left text-muted"><th className="py-1 pr-4 font-normal">Business</th><th className="py-1 pr-4 font-normal">Replies to reviews</th><th className="py-1 pr-4 font-normal">FAQ</th><th className="py-1 font-normal">Online booking</th></tr></thead>
+        <section className="mt-16 border-t border-line pt-8">
+          <h2 className="display text-[22px] font-medium">Next to nearby competitors</h2>
+          <table className="mt-5 w-full text-[15px]">
+            <thead>
+              <tr className="text-left text-muted">
+                <th className="pb-2 pr-4 font-normal">Business</th>
+                <th className="pb-2 pr-4 font-normal">Replies to reviews</th>
+                <th className="pb-2 pr-4 font-normal">FAQ page</th>
+                <th className="pb-2 font-normal">Online booking</th>
+              </tr>
+            </thead>
             <tbody>
               {[{ name: company, ...run.benchmark.you }, ...run.benchmark.competitors].map((c, i) => (
                 <tr key={i} className={`border-t border-line ${i === 0 ? "font-medium" : ""}`}>
-                  <td className="py-2 pr-4">{c.name}</td>
-                  <td className="py-2 pr-4">{c.reviewReplyDays == null ? "—" : `${c.reviewReplyDays} day${c.reviewReplyDays === 1 ? "" : "s"}`}</td>
-                  <td className="py-2 pr-4">{c.hasFaq == null ? "—" : c.hasFaq ? "yes" : "no"}</td>
-                  <td className="py-2">{c.hasOnlineBooking == null ? "—" : c.hasOnlineBooking ? "yes" : "no"}</td>
+                  <td className="py-2.5 pr-4">{c.name}</td>
+                  <td className="py-2.5 pr-4 tnum">{c.reviewReplyDays == null ? "—" : `${c.reviewReplyDays} day${c.reviewReplyDays === 1 ? "" : "s"}`}</td>
+                  <td className="py-2.5 pr-4">{c.hasFaq == null ? "—" : c.hasFaq ? "yes" : "no"}</td>
+                  <td className="py-2.5">{c.hasOnlineBooking == null ? "—" : c.hasOnlineBooking ? "yes" : "no"}</td>
                 </tr>
               ))}
             </tbody>
@@ -91,27 +142,47 @@ export default async function Report({ params }: { params: Promise<{ id: string 
         </section>
       )}
 
+      {/* ---- strengths / weaknesses */}
       {a && (a.strengths.length > 0 || a.weaknesses.length > 0) && (
-        <section className="mt-12 grid gap-8 sm:grid-cols-2">
-          <div><h2 className="text-lg font-medium">Doing well</h2>
-            <ul className="mt-3 space-y-3">{a.strengths.map((s, i) => <li key={i}>{s.text} <Chip e={s.evidence[0]} /></li>)}</ul></div>
-          <div><h2 className="text-lg font-medium">Not doing well</h2>
-            <ul className="mt-3 space-y-3">{a.weaknesses.map((s, i) => <li key={i}>{s.text} <Chip e={s.evidence[0]} /></li>)}</ul></div>
+        <section className="mt-16 grid gap-10 border-t border-line pt-8 sm:grid-cols-2">
+          <div>
+            <h2 className="display text-[22px] font-medium">Doing well</h2>
+            <ul className="mt-4 space-y-4">
+              {a.strengths.map((s, i) => (
+                <li key={i}><p>{s.text}</p><ul className="mt-1 border-l-2 border-line pl-3"><Quote e={s.evidence[0]} /></ul></li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h2 className="display text-[22px] font-medium">Not doing well</h2>
+            <ul className="mt-4 space-y-4">
+              {a.weaknesses.map((s, i) => (
+                <li key={i}><p>{s.text}</p><ul className="mt-1 border-l-2 border-line pl-3"><Quote e={s.evidence[0]} /></ul></li>
+              ))}
+            </ul>
+          </div>
         </section>
       )}
 
+      {/* ---- the plan: D1 + C4 */}
       {r && top && tpl && (
-        <section className="mt-16 rounded-lg border border-line bg-panel p-6">
+        <section className="mt-20 border-t-2 pt-10" style={{ borderColor: accent }}>
           <p className="text-muted">The one tool worth building</p>
-          <h2 className="mt-1 text-2xl font-semibold">{tpl.name}</h2>
-          <p className="mt-2 max-w-lg">{top.why}</p>
-          {r.belowThreshold && <p className="mt-2 text-red">Honestly: the numbers here are small. It may not be worth building anything yet.</p>}
-          <div className="mt-6"><HowItFits toolName={tpl.name} company={company} money={tpl.money} booking={tpl.id === "booking-intake"} /></div>
-          <div className="mt-6"><BeforeAfter task={top.addresses} hoursNow={top.hoursNow} hoursAfter={top.hoursAfter} assumption={top.assumption} /></div>
+          <h2 className="display mt-1 text-[clamp(28px,4.6vw,40px)] font-semibold leading-tight">{tpl.name}</h2>
+          <p className="mt-4 max-w-lg">{top.why}</p>
+          {r.belowThreshold && <p className="mt-3 text-red">Honestly: the numbers here are small. It may not be worth building anything yet.</p>}
+
+          <h3 className="mt-10 text-[15px] text-muted">How it fits into the day</h3>
+          <div className="mt-3"><HowItFits toolName={tpl.name} company={company} money={tpl.money} booking={tpl.id === "booking-intake"} accent={accent} /></div>
+
+          <h3 className="mt-10 text-[15px] text-muted">{top.addresses}</h3>
+          <div className="mt-3"><BeforeAfter hoursNow={top.hoursNow} hoursAfter={top.hoursAfter} assumption={top.assumption} accent={accent} /></div>
+
           {r.top.length > 1 && (
-            <p className="mt-6 text-sm text-muted">Also considered: {r.top.slice(1).map(o => templateById(o.template)?.name).filter(Boolean).join(", ")}.</p>
+            <p className="mt-8 text-sm text-muted">
+              Also considered: {r.top.slice(1).map(o => templateById(o.template)?.name).filter(Boolean).join(", ")}.
+            </p>
           )}
-          <p className="mt-6 text-sm text-muted">Build and deploy come next. (Screen 3 controls: rename, tone, off-limits topics, refund allowance.)</p>
         </section>
       )}
     </main>

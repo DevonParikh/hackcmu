@@ -25,9 +25,14 @@ async function get(url: string, ms = 8000): Promise<string | null> {
 export function pageText(html: string): { title: string; text: string } {
   const $ = cheerio.load(html);
   $("script, style, noscript, svg, iframe, template").remove();
+  // Block elements have no whitespace between them in .text(); add some so "Monday" and "12:00" don't fuse.
+  $("br").replaceWith("\n");
+  $("span, a, b, i, em, strong, label").each((_, el) => { $(el).append(" "); });
+  $("p, div, li, ul, ol, nav, main, aside, form, h1, h2, h3, h4, h5, h6, td, th, tr, section, article, header, footer, blockquote, dt, dd, figcaption").each((_, el) => { $(el).append("\n"); });
   const title = $("title").first().text().replace(/\s+/g, " ").trim();
   const main = $("main").length ? $("main") : $("body");
-  const text = main.text().replace(/\s+/g, " ").trim().slice(0, 12000);
+  // one block per line, single spaces within a line; lines are what boilerplate removal works on
+  const text = main.text().replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{2,}/g, "\n").trim().slice(0, 12000);
   return { title, text };
 }
 
@@ -48,13 +53,14 @@ const norm = (u: string) => u.replace(/#.*$/, "").replace(/\/+$/, "");
 const rank = (u: string) => { const i = PRIORITY.findIndex(k => u.toLowerCase().includes(k)); return i === -1 ? 999 : i; };
 
 export async function scrapeSite(startUrl: string, log: (m: string) => void)
-  : Promise<{ sources: Source[]; colors: string[]; logo: string | null }> {
+  : Promise<{ sources: Source[]; colors: string[]; logo: string | null; thin: boolean }> {
   const origin = new URL(startUrl).origin;
   const seen = new Set<string>();
   const queue: string[] = [startUrl];
   const sources: Source[] = [];
   let colors: string[] = [];
   let logo: string | null = null;
+  let thin = false;                                  // big HTML, almost no text → rendered with JavaScript
 
   while (queue.length && sources.length < MAX_PAGES) {
     const url = queue.shift()!;
@@ -63,6 +69,7 @@ export async function scrapeSite(startUrl: string, log: (m: string) => void)
     const html = await get(url);
     if (!html) continue;
     const { title, text } = pageText(html);
+    if (sources.length === 0 && html.length > 40_000 && text.length < 500) thin = true;
     if (text.length < 200) continue;
     sources.push({ url, title, kind: "page", text });
     log(`Reading ${title || url}`);
@@ -83,5 +90,5 @@ export async function scrapeSite(startUrl: string, log: (m: string) => void)
     links.sort((a, b) => rank(a) - rank(b));
     queue.push(...links);
   }
-  return { sources, colors, logo };
+  return { sources, colors, logo, thin };
 }

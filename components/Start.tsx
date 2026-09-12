@@ -47,7 +47,7 @@ export default function Start() {
         <input
           value={url} onChange={e => setUrl(e.target.value)} placeholder="yourbakery.com"
           aria-label="Company website" autoComplete="off" disabled={busy}
-          className="flex-1 min-w-0 rounded-md border border-line bg-panel px-4 py-3 text-ink placeholder:text-muted/70 focus:outline-2 focus:outline-blue"
+          className="min-w-0 flex-1 rounded-md border border-line bg-panel px-4 py-3 text-ink placeholder:text-muted/60 focus:outline-2 focus:outline-blue disabled:opacity-60"
         />
         <button type="submit" disabled={busy || !url.trim()}
           className="rounded-md bg-ink px-5 py-3 text-white disabled:opacity-50">
@@ -55,7 +55,7 @@ export default function Start() {
         </button>
       </form>
       {lines.length > 0 && (
-        <ol className="mt-6 space-y-1 text-muted" aria-live="polite">
+        <ol className="mt-8 space-y-1.5 border-l-2 border-line pl-4 text-muted" aria-live="polite">
           {lines.map((l, i) => (
             <li key={i} className={i === lines.length - 1 && busy ? "text-ink" : ""}>{l}</li>
           ))}
