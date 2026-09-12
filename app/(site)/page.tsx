@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DeflectionBars, HoursLine, StatTiles, TypeBars } from "@/components/LandingCharts";
+import { CaseBar, ChoreBars, Funnel, HoursLine, OutcomeBars, StatTiles, TypeRanges } from "@/components/LandingCharts";
 import Start from "@/components/Start";
 import { db } from "@/lib/db";
 import { providersConfigured } from "@/lib/llm";
@@ -15,6 +15,8 @@ const CASES = [
     tool: "Support & FAQ assistant",
     before: "Two people answered the same questions about custom cakes, allergens, and pickup times by email and Instagram every morning.",
     result: "5.1 hours back per week",
+    hoursBefore: 7.2,
+    hoursAfter: 2.1,
     detail: "78% of questions answered without a person. Custom-cake enquiries now arrive with size, date, and dietary needs already filled in.",
   },
   {
@@ -23,6 +25,8 @@ const CASES = [
     tool: "Booking intake",
     before: "The front desk spent the first hour of every day returning voicemails to find out what each caller needed.",
     result: "7.9 hours back per week",
+    hoursBefore: 10.4,
+    hoursAfter: 2.5,
     detail: "Callers after hours describe the problem and pick a slot type. The desk confirms in one call instead of three.",
   },
   {
@@ -31,6 +35,8 @@ const CASES = [
     tool: "Lead / intake bot",
     before: "Quote requests came in as one-line web forms, and half needed a call back just to learn the address and the job.",
     result: "6.4 hours back per week",
+    hoursBefore: 8.9,
+    hoursAfter: 2.5,
     detail: "Leads now arrive with location, problem, photos, and urgency. The owner quotes from the van between jobs.",
   },
 ];
@@ -117,7 +123,7 @@ export default async function Home() {
               <li>Nothing goes live without you</li>
             </ul>
             {providers.length === 0 && (
-              <p className="mt-6 rounded-lg px-3 py-2 text-sm" style={{ background: "var(--ochre-soft)", color: "#6b4a10" }}>
+              <p className="mt-6 rounded-lg px-3 py-2 text-sm" style={{ background: "var(--ochre-soft)", color: "#7C3A0B" }}>
                 No AI key is set on this server, so the analysis will stop after reading the site. Whoever set it up can add an Anthropic,
                 Gemini, xAI, or OpenAI-compatible key to .env.local and restart.
               </p>
@@ -150,15 +156,19 @@ export default async function Home() {
         </div>
         <div className="mt-6 grid gap-5 lg:grid-cols-[1.35fr_1fr]">
           <HoursLine />
-          <TypeBars />
+          <TypeRanges />
+        </div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <OutcomeBars />
+          <ChoreBars />
         </div>
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_1.35fr]">
-          <DeflectionBars />
+          <Funnel />
           <div className="chart-card">
             <div className="chart-head">
               <div>
                 <h3 className="chart-title">Businesses we have improved</h3>
-                <p className="chart-sub">Three sample stories, one assistant each</p>
+                <p className="chart-sub">Three sample stories, one assistant each, hours a week before and after</p>
               </div>
             </div>
             <ul className="case-list">
@@ -172,6 +182,12 @@ export default async function Home() {
                       </div>
                     </div>
                     <div className="case-result">{c.result}</div>
+                  </div>
+                  <div className="case-hours">
+                    <CaseBar before={c.hoursBefore} after={c.hoursAfter} />
+                    <span className="text-sm text-muted">
+                      {c.hoursBefore.toFixed(1)} h a week on the chore before, {c.hoursAfter.toFixed(1)} h with the assistant
+                    </span>
                   </div>
                   <p className="mt-2 text-sm text-muted">
                     <b className="text-ink">Before.</b> {c.before}

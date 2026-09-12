@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  --color-paper: #EBEEEC;
-  --color-panel: #F5F7F6;
-  --color-ink: #14213D;
-  --color-muted: #5F6B72;
-  --color-line: #CAD1CE;
-  --color-blue: #1D4E89;
-  --color-green: #2E7D5B;
-  --color-red: #A4203C;
+  --color-paper: #F7F6F2;
+  --color-panel: #FFFFFF;
+  --color-ink: #101828;
+  --color-muted: #5D6673;
+  --color-line: #E4E2DA;
+  --color-blue: #4338CA;
+  --color-green: #1A7F4B;
+  --color-red: #B42318;
   --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
   --font-display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
 }

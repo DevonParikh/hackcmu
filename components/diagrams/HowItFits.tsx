@@ -20,17 +20,17 @@ export default function HowItFits({ toolName, company, money, booking, accent }:
   );
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`A customer talks to ${toolName}; it answers, resolves, or hands off`}>
-      <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#8A949A" /></marker></defs>
-      {box(0, mid - boxH / 2, 118, "Customer", "#F5F7F6", "#CAD1CE", "#14213D", "c")}
-      <line x1={122} y1={mid} x2={240} y2={mid} stroke="#8A949A" strokeWidth={1.5} markerEnd="url(#arr)" />
+      <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7C8590" /></marker></defs>
+      {box(0, mid - boxH / 2, 118, "Customer", "#FFFFFF", "#E4E2DA", "#101828", "c")}
+      <line x1={122} y1={mid} x2={240} y2={mid} stroke="#7C8590" strokeWidth={1.5} markerEnd="url(#arr)" />
       {box(246, mid - boxH / 2, 196, toolName, accent, accent, "#FFFFFF", "t")}
       {outs.map((label, i) => {
         const y = i * (boxH + gap) + 4;
         const last = i === outs.length - 1;
         return (
           <g key={label}>
-            <path d={`M446,${mid} C 456,${mid} 456,${y + boxH / 2} 466,${y + boxH / 2}`} fill="none" stroke="#8A949A" strokeWidth={1.5} markerEnd="url(#arr)" />
-            {box(472, y, 208, label, last ? "#F5F7F6" : "#FFFFFF", last ? "#CAD1CE" : accent, "#14213D", `o${i}`)}
+            <path d={`M446,${mid} C 456,${mid} 456,${y + boxH / 2} 466,${y + boxH / 2}`} fill="none" stroke="#7C8590" strokeWidth={1.5} markerEnd="url(#arr)" />
+            {box(472, y, 208, label, last ? "#FFFFFF" : "#FFFFFF", last ? "#E4E2DA" : accent, "#101828", `o${i}`)}
           </g>
         );
       })}

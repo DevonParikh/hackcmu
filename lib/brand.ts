@@ -1,6 +1,6 @@
 // lib/brand.ts — the business's own colour as the report's accent, kept readable on paper.
 
-const INK = "#14213D";
+const INK = "#101828";
 
 export function safeAccent(hex?: string | null, fallback = INK): string {
   if (!hex) return fallback;

@@ -14,11 +14,11 @@ export default function TimeSink({ rows, accent }: { rows: TimeSinkRow[]; accent
     <ResponsiveContainer width="100%" height={16 + data.length * 52}>
       <BarChart data={data} layout="vertical" margin={{ left: 0, right: 48, top: 4, bottom: 4 }} barCategoryGap={12}>
         <XAxis type="number" hide domain={[0, "dataMax"]} />
-        <YAxis type="category" dataKey="axis" width={190} tick={{ fontSize: 14, fill: "#14213D" }} axisLine={false} tickLine={false} />
-        <Tooltip cursor={{ fill: "rgba(20,33,61,.06)" }} contentStyle={{ borderRadius: 6, border: "1px solid #CAD1CE", fontSize: 14 }}
+        <YAxis type="category" dataKey="axis" width={190} tick={{ fontSize: 14, fill: "#101828" }} axisLine={false} tickLine={false} />
+        <Tooltip cursor={{ fill: "rgba(20,33,61,.06)" }} contentStyle={{ borderRadius: 6, border: "1px solid #E4E2DA", fontSize: 14 }}
           formatter={(v) => [`${v} hours a week, estimated`, ""]} labelFormatter={(l) => String(l)} />
         <Bar dataKey="hoursPerWeek" fill={accent} radius={[0, 4, 4, 0]} isAnimationActive animationDuration={500}>
-          <LabelList dataKey="hoursPerWeek" position="right" formatter={(v: unknown) => `${v}h`} style={{ fill: "#14213D", fontSize: 14 }} />
+          <LabelList dataKey="hoursPerWeek" position="right" formatter={(v: unknown) => `${v}h`} style={{ fill: "#101828", fontSize: 14 }} />
         </Bar>
       </BarChart>
     </ResponsiveContainer>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./landing.css";
+import "./landing-charts.css";
 
 export const metadata: Metadata = {
   title: "Tailor",
