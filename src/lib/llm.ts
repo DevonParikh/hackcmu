@@ -38,7 +38,7 @@ export async function structured<T>(opts: {
   effort?: Effort;
   maxTokens?: number;
 }): Promise<T> {
-  const response = await getClient().messages.parse({
+  const response = await getClient().messages.create({
     model: opts.model ?? MODELS.main,
     max_tokens: opts.maxTokens ?? 16000,
     system: opts.system,
@@ -46,10 +46,21 @@ export async function structured<T>(opts: {
     output_config: { effort: opts.effort ?? "medium", format: zodOutputFormat(opts.schema) },
   });
   if (response.stop_reason === "refusal") {
-    throw new Error(`Model declined the request (${response.stop_details?.category ?? "refusal"})`);
+    throw new Error(`Claude declined this request (${response.stop_details?.category ?? "refusal"})`);
   }
-  if (!response.parsed_output) throw new Error("Model returned no parseable output");
-  return response.parsed_output as T;
+  if (response.stop_reason === "max_tokens") {
+    throw new Error("Claude's answer was cut off because it was too long. Try again with a smaller site or fewer documents.");
+  }
+  const text = textOf(response.content);
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error("Claude returned something that was not valid JSON");
+  }
+  const parsed = opts.schema.safeParse(json);
+  if (!parsed.success) throw new Error(`Claude's answer did not match the expected shape: ${parsed.error.issues[0]?.message ?? "unknown"}`);
+  return parsed.data;
 }
 
 /** Plain text completion. `system` may be split into a cached stable prefix and a volatile tail. */
@@ -76,6 +87,7 @@ export async function completeText(opts: {
   if (response.stop_reason === "refusal") {
     return "I can't help with that one. Please contact us directly and a person will follow up.";
   }
+  if (response.stop_reason === "max_tokens") return "";
   return textOf(response.content);
 }
 

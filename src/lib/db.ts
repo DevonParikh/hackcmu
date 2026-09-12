@@ -22,21 +22,30 @@ function connect() {
   const db = client.db(dbName);
   const ready = (async () => {
     await client.connect();
+    // Indexes help but are not required; a read-only user or an existing conflicting index must not take the app down.
     await Promise.all([
       db.collection<CompanyDoc>("companies").createIndex({ host: 1 }, { unique: true }),
       db.collection<RunDoc>("runs").createIndex({ companyId: 1, createdAt: -1 }),
       db.collection<SourceDoc>("sources").createIndex({ runId: 1 }),
       db.collection<ToolDoc>("tools").createIndex({ companyId: 1 }),
       db.collection<ConversationDoc>("conversations").createIndex({ toolId: 1 }),
-    ]);
+    ]).catch((e) => console.warn("[tailor] could not create indexes:", (e as Error).message));
   })();
   return { client, db, ready };
 }
 
 export async function getDb(): Promise<Db> {
   if (!globalThis.__tailorMongo) globalThis.__tailorMongo = connect();
-  await globalThis.__tailorMongo.ready;
-  return globalThis.__tailorMongo.db;
+  const conn = globalThis.__tailorMongo;
+  try {
+    await conn.ready;
+  } catch (e) {
+    // Do not cache a failed connection: the next request retries from scratch.
+    if (globalThis.__tailorMongo === conn) globalThis.__tailorMongo = undefined;
+    await conn.client.close().catch(() => undefined);
+    throw e;
+  }
+  return conn.db;
 }
 
 export async function companies(): Promise<Collection<CompanyDoc>> {

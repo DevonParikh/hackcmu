@@ -34,35 +34,77 @@ export function heuristicProfile(crawl: CrawlResult, name: string): CompanyProfi
   const lower = text.toLowerCase();
   const firstPara = (p?: { text: string }) => (p?.text.split("\n").find((l) => l.length > 60) ?? "").slice(0, 300);
   const tagline = home?.description || firstPara(home) || `${name} — see ${crawl.rootUrl}`;
-  const offering = [firstPara(about), firstPara(home)].filter(Boolean).join(" ").slice(0, 500) || tagline;
+  // What they do: sentences that say so, before founding stories.
+  const verbRe = /\b(bake|bakes|sell|sells|offer|offers|make|makes|provide|provides|specializ\w+|serve|serves|repair|clean|design|build|teach|treat|help|deliver|install|connects|sorts|is a|are a)\b/i;
+  const candidates = [home?.description ?? "", ...pages.filter((p) => !/career|job|hiring|blog|news/i.test(p.url)).flatMap((p) => p.text.split(/(?<=[.!?])\s+|\n+/))]
+    .map((x) => x.trim())
+    .filter((x) => x.length > 30 && x.length < 260 && verbRe.test(x) && /\b(we|our|[A-Z][\w&' ]{2,40} (offers|provides|specializes|is|bakes|makes|sells|connects))\b/.test(x))
+    .map((x) => ({ x, score: (x.match(/,/g) || []).length * 0.5 + (x.length >= 60 ? 1 : 0) + (/\b(estimate|policy|notice|fee|cancel)\b/i.test(x) ? -2 : 0) }))
+    .sort((a, b) => b.score - a.score);
+  const picked: string[] = [];
+  for (const c of candidates) if (!picked.includes(c.x)) picked.push(c.x);
+  const offering = (picked.length ? picked.slice(0, 2).join(" ") : [firstPara(about), firstPara(home)].filter(Boolean).join(" ")).slice(0, 500) || tagline;
 
   const segments: string[] = [];
+  const lead = `${home?.description ?? ""} ${firstPara(home)} ${firstPara(about)}`;
+  const forMatch = lead.match(/\b(?:built for|designed for|made for|serving|for)\s+([a-z][a-z ,'&-]{3,90}?)(?=[.:;!)]|\s(?:in|with|across|who|that|since|and their|near)\b|$)/i);
+  if (forMatch) {
+    for (const part of forMatch[1].split(/,|\band\b|&/)) {
+      const seg = part.trim().replace(/^(the|whole|entire|all|every|our|your)\s+/i, "").toLowerCase();
+      if (seg.length >= 4 && seg.length <= 32 && !/^(you|your|us|our|the|a|an)$/.test(seg)) segments.push(seg);
+    }
+  }
   const segMap: [string, RegExp][] = [
-    ["families", /famil/],
-    ["local residents", /neighborhood|local|community/],
-    ["small businesses", /small business/],
-    ["businesses", /\bb2b\b|enterprise|companies|teams/],
-    ["students", /student/],
-    ["patients", /patient/],
-    ["homeowners", /homeowner|your home/],
-    ["event hosts", /wedding|event|catering/],
+    ["families", /\bfamil(y|ies)\b/],
+    ["local residents", /\b(neighborhood|neighbourhood|local|community)\b/],
+    ["small businesses", /\bsmall business(es)?\b/],
+    ["businesses", /\b(b2b|enterprise|companies|teams)\b/],
+    ["students", /\bstudents?\b/],
+    ["patients", /\bpatients?\b/],
+    ["homeowners", /\b(homeowners?|your home)\b/],
+    ["event hosts", /\b(weddings?|events?|catering)\b/],
+    ["freelancers", /\bfreelancers?\b/],
+    ["parents and children", /\b(kids|children|toddlers|parents)\b/],
   ];
-  for (const [s, re] of segMap) if (re.test(lower)) segments.push(s);
+  for (const [seg, re] of segMap) if (re.test(lower) && !segments.some((x) => x.includes(seg.split(" ")[0]))) segments.push(seg);
   if (!segments.length) segments.push("general public");
 
-  const businessModel = features.ecommerce
-    ? "Online sales and in-person purchases"
-    : features.pricingPage
-      ? "Services with published prices"
-      : "Services quoted per customer";
-  const priceMatch = text.match(/\$\s?\d{1,5}(\.\d{2})?/g);
-  const pricingSummary = priceMatch ? `Prices published on the site (e.g. ${[...new Set(priceMatch)].slice(0, 3).join(", ")})` : "Prices not published";
+  const monthlyPrices = (lower.match(/\$\s?\d+(\.\d{2})?\s?(\/|per)\s?(month|mo|year|yr|user)\b/g) || []).length;
+  const softwareLike = /\b(software|saas|platform|app|free trial|per user|sign up|log in)\b/.test(`${home?.description ?? ""} ${firstPara(home)}`.toLowerCase());
+  const subscription = (softwareLike && monthlyPrices >= 1) || monthlyPrices >= 3 || /\bsubscription\b/.test(lower);
+  const membership = !subscription && /\bmembership (plan|program)\b/.test(lower);
+  const retail = pages.some((p) => /\b(menu|shop|products?|store|catalog)\b/i.test(p.url + " " + p.title)) || /\b(menu|in store|in-store|our products)\b/.test(lower);
+  const businessModel = subscription
+    ? features.ecommerce
+      ? "Subscriptions plus online sales"
+      : "Subscription plans"
+    : features.ecommerce
+      ? contact.address
+        ? "Online and in-person sales"
+        : "Online sales"
+      : retail && features.pricingPage
+        ? `Retail with prices shown${membership ? ", plus a membership plan" : ""}`
+        : features.pricingPage
+          ? `Services with published prices${membership ? ", plus a membership plan" : ""}`
+          : `Services quoted per customer${membership ? ", plus a membership plan" : ""}`;
+  const customerPages = pages.filter((p) => !/career|jobs?|hiring|join/i.test(p.url + " " + p.title));
+  const pricePages = customerPages.filter((p) => /pric|menu|plans|rates|fees|insurance/i.test(p.url + " " + p.title));
+  const priceSource = (pricePages.length ? pricePages : customerPages).map((p) => p.text).join("\n").replace(/\$\s?\d+(\.\d{2})?\s?(\/|per)\s?(hour|hr)\b/gi, "");
+  const priceMatch = priceSource.match(/\$\s?\d{1,5}(,\d{3})?(\.\d{2})?(\s?(\/|per)\s?(month|mo|year|yr|user|hour|hr|session|person))?/g);
+  const pricingSummary = priceMatch
+    ? `Prices published on the site (e.g. ${[...new Set(priceMatch.map((m) => m.replace(/\s+/g, " ").trim()))].slice(0, 3).join(", ")})`
+    : "Prices not published";
+  const WORDS: Record<string, number> = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20 };
+  const sizeHit = lower.match(/\b(?:team of|staff of|a team of)\s+(\d{1,3}|[a-z]+)\b|\b(\d{1,3})\s+(?:staff|employees|team members|people on (?:our|the) team)\b/);
+  const sizeNum = sizeHit ? Number(sizeHit[1] ?? sizeHit[2]) || WORDS[sizeHit[1] ?? ""] : undefined;
   const staffMentions = (lower.match(/\bour team\b|\bstaff\b|\bemployees\b/g) || []).length;
-  const sizeEstimate = /franchise|locations across|nationwide/.test(lower)
-    ? "Multi-location (site mentions several locations)"
-    : staffMentions > 2 || features.careersPage
-      ? "Small team, 2-20 staff (site mentions a team and hiring)"
-      : "Solo or very small team (no team or hiring pages found)";
+  const sizeEstimate = sizeNum
+    ? `About ${sizeNum} people (the site says "${sizeHit![0].trim()}")`
+    : /franchise|locations across|nationwide|all locations/.test(lower)
+      ? "Several locations (the site mentions them)"
+      : staffMentions > 2 || features.careersPage
+        ? "Not published; the site mentions a team or hiring"
+        : "Not published on the site";
   const channels: string[] = [];
   if (contact.phone) channels.push("phone");
   if (contact.email) channels.push("email");
@@ -71,8 +113,13 @@ export function heuristicProfile(crawl: CrawlResult, name: string): CompanyProfi
   if (features.ecommerce) channels.push("online store");
   if (contact.address) channels.push("walk-in");
   if (!channels.length) channels.push("website");
-  const exclam = (text.match(/!/g) || []).length / Math.max(1, text.length / 1000);
-  const toneOfVoice = /\bwe're\b|\by'all\b|\bfolks\b/.test(lower) || exclam > 1.5 ? "Warm and casual" : /\bclients\b|\bprofessional\b|\bconsultation\b/.test(lower) ? "Professional and reassuring" : "Friendly and straightforward";
+  const perK = (re: RegExp) => (lower.match(re) || []).length / Math.max(1, lower.length / 1000);
+  const casual = perK(/\bwe're\b|\by'all\b|\bfolks\b|\byum\b|\bwe love\b|!/g);
+  const formal = perK(/\bpatients?\b|\bclients?\b|\bconsultation\b|\bprofessional\b|\blicensed\b|\bcertified\b|\bdr\.|\battorney\b|\bpolicy\b/g);
+  const practical = perK(/\bapp\b|\bsoftware\b|\bdashboard\b|\bsync\b|\bexport\b|\bintegrat|\bpricing\b|\bplans?\b/g);
+  // Only label a tone when the wording clearly leans one way; otherwise stay neutral.
+  const toneOfVoice =
+    lower.length < 1500 ? "Friendly and straightforward" : formal >= 1 && formal >= casual * 1.5 ? "Professional and reassuring" : casual > 1.5 && casual >= formal * 1.5 ? "Warm and casual" : practical >= 1.5 && practical > formal ? "Direct and practical" : "Friendly and straightforward";
   return {
     name,
     tagline: tagline.slice(0, 200),
@@ -84,6 +131,6 @@ export function heuristicProfile(crawl: CrawlResult, name: string): CompanyProfi
     channels,
     toneOfVoice,
     location: contact.address,
-    sourceIndices: pages.slice(0, 3).map((_, i) => i),
+    sourceIndices: [...new Set([pages.indexOf(home!), about ? pages.indexOf(about) : -1, ...pricePages.slice(0, 1).map((p) => pages.indexOf(p))].filter((i) => i >= 0))],
   };
 }

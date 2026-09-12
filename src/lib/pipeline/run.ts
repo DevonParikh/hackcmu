@@ -16,7 +16,11 @@ const locks = new Map<string, Promise<unknown>>();
 export function withRunLock<T>(runId: string, fn: () => Promise<T>): Promise<T> {
   const prev = locks.get(runId) ?? Promise.resolve();
   const next = prev.then(fn, fn);
-  locks.set(runId, next.catch(() => undefined));
+  const settled = next.catch(() => undefined);
+  locks.set(runId, settled);
+  settled.then(() => {
+    if (locks.get(runId) === settled) locks.delete(runId);
+  });
   return next;
 }
 
@@ -60,17 +64,20 @@ export async function executeRun(runId: string): Promise<void> {
   const runCol = await runs();
   const run = await runCol.findOne({ _id: runId });
   if (!run) return;
-  const log = (msg: string) => void appendLog(runId, msg);
+  const log = (msg: string) => void appendLog(runId, msg).catch((e) => console.error("log write failed", e));
   try {
     await setStage(runId, "ingest", { status: "running" });
     log(isDemo() ? "Demo mode: no Claude API key set, using deterministic analysis" : "Live mode: using Claude for analysis");
     log(`Reading ${run.url}`);
     const crawl = await crawlSite(run.url, { maxPages: 25, log: (m) => log(m) });
     if (!crawl.pages.length) throw new Error("Could not read any pages from that URL. Check the address or paste content instead.");
-    log(`Read ${crawl.pages.length} pages. Tech detected: ${crawl.tech.join(", ") || "none"}`);
+    log(`Read ${crawl.pages.length} pages${crawl.skipped ? ` (${crawl.skipped} skipped)` : ""}. Tools detected: ${crawl.tech.join(", ") || "none"}`);
+    if (crawl.externalHosts.length) log(`The site links out to: ${crawl.externalHosts.slice(0, 5).join(", ")}`);
 
     const srcCol = await sources();
-    await srcCol.deleteMany({ runId });
+    await srcCol.deleteMany({ runId, kind: { $ne: "user" } });
+    const userDocs = await srcCol.find({ runId, kind: "user" }).toArray();
+    if (userDocs.length) log(`Read ${userDocs.length} document(s) you provided: ${userDocs.map((d) => d.title).join(", ")}`);
     const srcDocs: SourceDoc[] = crawl.pages.map((p) => ({
       _id: crypto.randomUUID(),
       runId,
@@ -83,10 +90,11 @@ export async function executeRun(runId: string): Promise<void> {
       fetchedAt: now(),
     }));
     if (srcDocs.length) await srcCol.insertMany(srcDocs);
+    const allSources: SourceDoc[] = [...srcDocs, ...userDocs];
 
     await setStage(runId, "profile");
     log("Profiling the company");
-    const profile = await profileCompany({ crawl, sources: srcDocs, nameHint: run.input.name });
+    const profile = await profileCompany({ crawl, sources: allSources, nameHint: run.input.name });
     const compCol = await companies();
     await compCol.updateOne(
       { _id: run.companyId },
@@ -114,7 +122,7 @@ export async function executeRun(runId: string): Promise<void> {
     await setStage(runId, "assess");
     log("Assessing strengths, weaknesses, and friction");
     const signals = detectSignals(crawl, run.input.pain);
-    const assessment = await assessCompany({ companyName: profile.name, crawl, sources: srcDocs, competitors, signals });
+    const assessment = await assessCompany({ companyName: profile.name, crawl, sources: allSources, competitors, signals, log });
     await updateRun(runId, { assessment });
     log(`Found ${assessment.strengths.length} strengths, ${assessment.weaknesses.length} weaknesses, ${assessment.frictionSignals.length} friction signals`);
 
@@ -126,8 +134,9 @@ export async function executeRun(runId: string): Promise<void> {
       features: crawl.features,
       contact: crawl.contact,
       signals: assessment.frictionSignals,
-      pageTitles: crawl.pages.map((p) => p.title),
-      pageCount: crawl.pages.length,
+      pageTitles: allSources.map((p) => p.title),
+      pageCount: allSources.length,
+      text: allSources.map((p) => p.text).join("\n").toLowerCase().slice(0, 200_000),
       tone: profile.toneOfVoice,
       offLimits: [],
     };

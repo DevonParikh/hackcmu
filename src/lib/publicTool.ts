@@ -1,3 +1,4 @@
+import { isDemo } from "./llm";
 import { getTemplate } from "./templates";
 import type { ToolDoc } from "./types";
 
@@ -15,6 +16,9 @@ export function publicTool(tool: ToolDoc) {
     brand: tool.config.brand,
     escalation: tool.config.escalation,
     evalSummary: tool.evalSummary,
+    suggestedQuestions: tool.config.suggestedQuestions ?? [],
+    runId: tool.runId,
+    demo: isDemo(),
   };
 }
 export type PublicTool = ReturnType<typeof publicTool>;

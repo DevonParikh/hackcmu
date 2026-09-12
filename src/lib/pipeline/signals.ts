@@ -14,12 +14,13 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
     out.push({
       id: "support_by_email_only",
       task: "Answering the same customer questions by email and phone",
-      who: "Owner or front-desk staff",
-      frequency: "Daily",
+      who: "Whoever answers the phone and inbox",
+      frequency: "Every time a customer asks",
       evidence: [
         {
-          quote: `Only ${[contact.email && "email", contact.phone && "phone"].filter(Boolean).join(" and ")} offered; no chat widget detected`,
+          quote: `Only ${[contact.email && "email", contact.phone && "phone"].filter(Boolean).join(" and ")} offered; no chat or self-serve help found`,
           sourceUrl: contactPage?.url ?? rootUrl,
+          observed: true,
         },
       ],
     });
@@ -29,21 +30,23 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
       id: "no_faq_page",
       task: "Explaining basics (hours, policies, what's included) one customer at a time",
       who: "Whoever answers the inbox",
-      frequency: "Several times a week",
-      evidence: [{ quote: `No FAQ page found among ${pages.length} crawled pages`, sourceUrl: rootUrl }],
+      frequency: "Every time a customer asks",
+      evidence: [{ quote: `No FAQ page found among the ${pages.length} pages we read`, sourceUrl: rootUrl, observed: true }],
     });
   }
-  const bookingRe = /appointment|reservation|book (a|an|your)|reserve|schedule (a|an|your)|(call|phone|email)( us)? to (order|book|reserve|schedule)|to (order|book|reserve|schedule),? (please )?(call|phone|email)|(confirm|take|place)[a-z ]* (order|booking)s? by phone|orders? by phone/;
-  const mentionsBooking = bookingRe.test(lower);
-  if (!features.onlineBooking && mentionsBooking) {
-    const p = pages.find((pg) => bookingRe.test(pg.text.toLowerCase())) ?? pages[0];
-    const m = p?.text.match(/[^.\n]*(appointment|reservation|book|reserve|schedule|order)[^.\n]*/i);
+  // Only real "contact us to book/order" constructions count; "no appointment necessary" must not.
+  const bookingRe = /\b((call|phone|email|text)( us)?( at [^.]{0,40})? to (order|book|reserve|schedule|make an appointment)|to (order|book|reserve|schedule|make an appointment),? (please )?(call|phone|email|text)|(appointments?|reservations?|bookings?|orders?) (are )?(taken |made |only )?(by|over the) phone|call (us )?(for|to make|to schedule|to book) (an appointment|a reservation|a booking|your appointment)|we confirm (every |all )?(order|appointment|booking)s? by phone|book (a|an|your) [a-z ]{0,30}by (phone|calling)|reserve (a|your) [a-z ]{0,30}by (phone|calling))\b/i;
+  const negatesBooking = /\b(no appointments? (necessary|needed|required)|walk-?ins? (welcome|only)|no reservations?|first come)\b/i;
+  const bookingHit = pages
+    .map((pg) => ({ pg, sentence: pg.text.split(/(?<=[.!?])\s+|\n+/).find((x) => bookingRe.test(x) && !negatesBooking.test(x)) }))
+    .find((h) => h.sentence);
+  if (!features.onlineBooking && bookingHit?.sentence) {
     out.push({
       id: "phone_only_booking",
       task: "Taking orders and bookings by phone or email instead of online",
-      who: "Front desk",
-      frequency: "Daily",
-      evidence: [{ quote: m ? m[0].trim().slice(0, 160) : "Booking mentioned but no online booking tool detected", sourceUrl: p?.url ?? rootUrl }],
+      who: "Whoever answers the phone",
+      frequency: "Every order or booking",
+      evidence: [{ quote: bookingHit.sentence.trim().slice(0, 180), sourceUrl: bookingHit.pg.url }],
     });
   }
   if (!features.contactForm && !features.ecommerce) {
@@ -51,31 +54,48 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
       id: "no_lead_capture",
       task: "Qualifying new inquiries through unstructured emails and calls",
       who: "Owner",
-      frequency: "Weekly",
-      evidence: [{ quote: "No contact or inquiry form detected on the site", sourceUrl: contactPage?.url ?? rootUrl }],
+      frequency: "Every new inquiry",
+      evidence: [{ quote: "No contact or inquiry form found on the site", sourceUrl: contactPage?.url ?? rootUrl, observed: true }],
     });
   }
-  const reviewLink = pages.find((p) => /yelp\.com|google\.com\/maps|g\.page|trustpilot|tripadvisor/i.test(p.html));
+  const reviewLink = pages.find((p) => /yelp\.com|google\.com\/maps|g\.page|trustpilot|tripadvisor|facebook\.com\/[^"']+\/reviews/i.test(p.html) || /reviews? on (google|yelp|facebook)/i.test(p.text));
   if (reviewLink && !features.reviewsShown) {
     out.push({
       id: "reviews_offsite",
       task: "Replying to reviews on Google, Yelp, or similar",
       who: "Owner",
-      frequency: "Weekly",
-      evidence: [{ quote: "Links to a review site found but no reviews shown on the site", sourceUrl: reviewLink.url }],
+      frequency: "Every review",
+      evidence: [{ quote: "Links to a review site, but no reviews shown on the site itself", sourceUrl: reviewLink.url, observed: true }],
     });
   }
   for (const jp of jobPages(pages)) {
-    const m = jp.text.match(/[^.\n]*(receptionist|front desk|customer service|customer support|office manager|administrative|scheduler|host)[^.\n]*/i);
-    if (m) {
+    const sentences = jp.text.split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter((x) => x.length > 20);
+    const hiringWords = /hiring|open role|open position|position|join our team|looking for|we need|apply/i;
+    const frontDesk = /\b(receptionist|front desk|office manager|administrative assistant|scheduler|counter (staff|associate|help)|host(ess)?)\b/i;
+    const support = /\b(customer service|customer support|support specialist|support associate|answer(ing)? (the )?(phone|phones|calls|emails)|client care)\b/i;
+    const contactVerb = /\b(greet|answer|calls?|phones?|emails?|customers?|patients?|clients?|schedul\w*|book\w*|inquir\w*)\b/i;
+    const pick = (role: RegExp) => sentences.find((x) => hiringWords.test(x) && role.test(x) && contactVerb.test(x)) ?? sentences.find((x) => role.test(x) && contactVerb.test(x) && /\b(we're|we are|part-time|full-time|hour|\$)/i.test(x));
+    const deskSentence = pick(frontDesk);
+    const supportCandidate = pick(support);
+    // One sentence should produce one signal: a front-desk role that also answers phones is a front-desk signal.
+    const supportSentence = supportCandidate && supportCandidate !== deskSentence ? supportCandidate : undefined;
+    if (supportSentence && !out.some((o) => o.id === "hiring_support")) {
+      out.push({
+        id: "hiring_support",
+        task: "Hiring people to answer routine customer questions",
+        who: "Customer support staff",
+        frequency: "Ongoing",
+        evidence: [{ quote: supportSentence.slice(0, 180), sourceUrl: jp.url }],
+      });
+    }
+    if (deskSentence && !out.some((o) => o.id === "hiring_front_desk")) {
       out.push({
         id: "hiring_front_desk",
-        task: "Hiring for roles that spend much of the day answering routine questions",
-        who: "Front desk or support staff",
+        task: "Hiring front-desk staff to take calls and schedule by hand",
+        who: "Front desk",
         frequency: "Ongoing",
-        evidence: [{ quote: m[0].trim().slice(0, 160), sourceUrl: jp.url }],
+        evidence: [{ quote: deskSentence.slice(0, 180), sourceUrl: jp.url }],
       });
-      break;
     }
   }
   if (features.ecommerce) {
@@ -84,8 +104,8 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
       id: "ecommerce_catalog",
       task: "Writing and updating product listings",
       who: "Owner or marketing",
-      frequency: "Weekly",
-      evidence: [{ quote: "Online store or checkout detected", sourceUrl: p?.url ?? rootUrl }],
+      frequency: "Every new product",
+      evidence: [{ quote: "Online store or checkout found on the site", sourceUrl: p?.url ?? rootUrl, observed: true }],
     });
   }
   const painLower = pain.toLowerCase();

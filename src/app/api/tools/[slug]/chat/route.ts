@@ -1,35 +1,39 @@
 import { NextResponse } from "next/server";
+import { withApi } from "@/lib/api";
 import { z } from "zod";
 import { conversations, newId, now, tools } from "@/lib/db";
-import { answerChat, answerForm } from "@/lib/runtime/chat";
+import { answerChat, answerForm, isHandOff } from "@/lib/runtime/chat";
 import type { ConversationDoc } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const Body = z.object({ message: z.string().min(1).max(4000), conversationId: z.string().optional() });
+const Body = z.object({ message: z.string().min(1, "Type a message first.").max(4000, "Please keep messages under 4000 characters."), conversationId: z.string().max(100).optional() });
 
-// Simple per-tool rate limit (per server instance).
+// Per-instance rate limits: one visitor cannot lock a widget for everyone, and one widget has a ceiling.
 const buckets = new Map<string, { n: number; reset: number }>();
-function limited(slug: string): boolean {
-  const b = buckets.get(slug);
+function hit(key: string, limit: number): boolean {
   const t = Date.now();
+  if (buckets.size > 5000) for (const [k, v] of buckets) if (v.reset < t) buckets.delete(k);
+  const b = buckets.get(key);
   if (!b || b.reset < t) {
-    buckets.set(slug, { n: 1, reset: t + 60_000 });
+    buckets.set(key, { n: 1, reset: t + 60_000 });
     return false;
   }
   b.n += 1;
-  return b.n > 60;
+  return b.n > limit;
 }
+const MAX_HISTORY = 200;
 
-export async function POST(req: Request, ctx: { params: Promise<{ slug: string }> }) {
+export const POST = withApi(async (req: Request, ctx: { params: Promise<{ slug: string }> }) => {
   const { slug } = await ctx.params;
-  if (limited(slug)) return NextResponse.json({ error: "Too many messages, try again in a minute" }, { status: 429 });
   const body = Body.safeParse(await req.json().catch(() => ({})));
-  if (!body.success) return NextResponse.json({ error: "Message is required" }, { status: 400 });
+  if (!body.success) return NextResponse.json({ error: body.error.issues[0]?.message ?? "Message is required" }, { status: 400 });
   const tool = await (await tools()).findOne({ _id: slug });
-  if (!tool) return NextResponse.json({ error: "Tool not found" }, { status: 404 });
+  if (!tool) return NextResponse.json({ error: "This assistant is no longer available." }, { status: 404 });
+  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "local";
+  if (hit(`${slug}|${ip}`, 30) || hit(slug, 600)) return NextResponse.json({ error: "Too many messages in a minute. Please wait a moment and try again." }, { status: 429 });
 
   if (tool.mode === "form") {
     const reply = await answerForm(tool, body.data.message);
@@ -44,7 +48,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string }
   }
   const reply = await answerChat(tool, conv.messages, body.data.message);
   const t = now();
-  const next = [...conv.messages, { role: "user" as const, content: body.data.message, t }, { role: "assistant" as const, content: reply, t }];
+  const outcome = isHandOff(tool, reply) ? ("handed_off" as const) : ("answered" as const);
+  const next = [...conv.messages, { role: "user" as const, content: body.data.message, t }, { role: "assistant" as const, content: reply, t, outcome }].slice(-MAX_HISTORY);
   await convCol.updateOne({ _id: conv._id }, { $set: { messages: next, updatedAt: t } });
   return NextResponse.json({ reply, conversationId: conv._id });
-}
+});

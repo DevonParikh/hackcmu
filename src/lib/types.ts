@@ -3,8 +3,9 @@ import { z } from "zod";
 // ---------- Shared value schemas (used for structured outputs and DB docs) ----------
 
 export const EvidenceSchema = z.object({
-  quote: z.string().describe("Short verbatim quote or concrete observation"),
+  quote: z.string().describe("Short verbatim quote from the source, or a concrete observation about it"),
   sourceUrl: z.string().describe("URL the evidence came from"),
+  observed: z.boolean().optional().describe("true when this is an observation about the page (e.g. no form found), not a verbatim quote"),
 });
 export type Evidence = z.infer<typeof EvidenceSchema>;
 
@@ -49,15 +50,15 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   onlineBooking: "Online booking",
   liveChat: "Live chat",
   faqPage: "FAQ page",
-  pricingPage: "Pricing page",
+  pricingPage: "Prices or menu online",
   contactForm: "Contact form",
-  reviewsShown: "Reviews on site",
+  reviewsShown: "Reviews shown on the site",
   blog: "Blog or news",
-  socialLinks: "Social links",
-  emailCapture: "Email signup",
-  ecommerce: "Online ordering or checkout",
+  socialLinks: "Social media links",
+  emailCapture: "Newsletter signup",
+  ecommerce: "Online ordering or shop",
   careersPage: "Careers page",
-  mobileReady: "Mobile viewport",
+  mobileReady: "Works on phones",
 };
 export const FeatureChecklistSchema = z.record(z.enum(FEATURE_KEYS), z.boolean());
 export type FeatureChecklist = Record<FeatureKey, boolean>;
@@ -106,6 +107,7 @@ export const OpportunitySchema = z.object({
   adoptionEffort: z.number().describe("Lower is easier"),
   rationale: z.string(),
   signalsAddressed: z.array(z.string()),
+  fit: z.enum(["strong", "possible", "weak"]).default("possible"),
 });
 export type Opportunity = z.infer<typeof OpportunitySchema>;
 
@@ -133,25 +135,51 @@ export const ToolConfigSchema = z.object({
   knowledge: z.array(KnowledgeChunkSchema),
   placeholder: z.string(),
   greeting: z.string(),
+  about: z.string(),
+  suggestedQuestions: z.array(z.string()),
+  companyName: z.string(),
 });
 export type ToolConfig = z.infer<typeof ToolConfigSchema>;
+
+export const EvalOutcomeSchema = z.enum(["answered", "handed_off", "failed"]);
+export type EvalOutcome = z.infer<typeof EvalOutcomeSchema>;
 
 export const EvalCaseSchema = z.object({
   question: z.string(),
   answer: z.string(),
   pass: z.boolean(),
   note: z.string(),
+  outcome: EvalOutcomeSchema,
+  latencyMs: z.number(),
+  starred: z.boolean().default(false),
 });
 export type EvalCase = z.infer<typeof EvalCaseSchema>;
 
 // ---------- Run input ----------
 
+// ---------- Owner intake (plain questions, every answer optional) ----------
+
+export const RoutineShareSchema = z.enum(["most", "half", "some", "unsure"]);
+export const MinutesBucketSchema = z.enum(["under2", "2to5", "5to10", "10to20", "over20", "unsure"]);
+export const ReplyTimeSchema = z.enum(["1h", "fewHours", "sameDay", "nextDay", "2to3days", "longer", "unsure"]);
+
+export const IntakeSchema = z.object({
+  inquiriesPerWeek: z.number().nonnegative().max(100_000).optional(),
+  routineShare: RoutineShareSchema.optional(),
+  minutesPerInquiry: MinutesBucketSchema.optional(),
+  replyTime: ReplyTimeSchema.optional(),
+  hourValue: z.number().nonnegative().max(100_000).optional(),
+  itemsPerMonth: z.number().nonnegative().max(100_000).optional(),
+  topQuestions: z.array(z.string().max(300)).max(5).default([]),
+});
+export type Intake = z.infer<typeof IntakeSchema>;
+
 export const AnalyzeInputSchema = z.object({
-  url: z.string().min(4),
-  name: z.string().optional().default(""),
-  competitors: z.array(z.string()).optional().default([]),
-  github: z.string().optional().default(""),
-  pain: z.string().optional().default(""),
+  url: z.string().min(4).max(2000),
+  name: z.string().max(120).optional().default(""),
+  competitors: z.array(z.string().max(2000)).max(5).optional().default([]),
+  pain: z.string().max(500).optional().default(""),
+  notes: z.string().max(100_000).optional().default(""),
 });
 export type AnalyzeInput = z.infer<typeof AnalyzeInputSchema>;
 
@@ -198,6 +226,7 @@ export interface RunDoc {
   companyId: string;
   url: string;
   input: AnalyzeInput;
+  intake: Intake;
   mode: "live" | "demo";
   status: "queued" | "running" | "done" | "failed";
   stage: RunStage;
@@ -216,7 +245,8 @@ export interface SourceDoc {
   runId: string;
   companyId: string;
   url: string;
-  kind: "page" | "review" | "job" | "repo" | "user" | "search";
+  kind: "page" | "job" | "user";
+  audience?: "public" | "staff";
   title: string;
   text: string;
   description: string;
@@ -238,7 +268,7 @@ export interface ToolDoc {
 export interface ConversationDoc {
   _id: string;
   toolId: string;
-  messages: { role: "user" | "assistant"; content: string; t: string }[];
+  messages: { role: "user" | "assistant"; content: string; t: string; outcome?: "answered" | "handed_off" }[];
   createdAt: string;
   updatedAt: string;
 }

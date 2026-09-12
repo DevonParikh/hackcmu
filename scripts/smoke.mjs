@@ -47,7 +47,7 @@ check(run.assessment && run.assessment.weaknesses.length > 0, `${run.assessment?
 const sigIds = run.assessment?.frictionSignals.map((s) => s.id) || [];
 check(sigIds.includes("support_by_email_only"), `friction signals: ${sigIds.join(", ")}`);
 check(sigIds.includes("phone_only_booking"), "phone-only ordering signal found");
-check(sigIds.includes("hiring_front_desk"), "hiring for front desk signal found");
+check(sigIds.includes("hiring_front_desk") || sigIds.includes("hiring_support"), "hiring signal found from the careers page");
 const allEvidence = [...run.assessment.strengths, ...run.assessment.weaknesses, ...run.assessment.frictionSignals].flatMap((c) => c.evidence);
 check(allEvidence.every((e) => e.sourceUrl && e.quote), `every claim has evidence with a URL (${allEvidence.length} items)`);
 if (RIVAL) {
