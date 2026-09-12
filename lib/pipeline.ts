@@ -49,7 +49,7 @@ export async function runAnalysis(runId: ObjectId, url: string, log: Log) {
       sources.push({ url: cites[0] ?? "search", title: "Reviews and listings (search)", kind: "review", text });
       log(cites.length ? `Found reviews across ${cites.length} sources` : "Found some reviews");
     }
-  } catch { log("No reviews found, continuing"); }
+  } catch (e) { log(`No reviews found (${String(e instanceof Error ? e.message : e).replace(/\s+/g, " ").slice(0, 70)}), continuing`); }
   await save({ stage: "scraped", name, sources, brand: { colors, logo }, thin });
 
   // ---- B. Profile

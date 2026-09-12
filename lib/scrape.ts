@@ -8,6 +8,8 @@ const MAX_PAGES = 15;
 const PRIORITY = ["pricing", "price", "plans", "faq", "help", "support", "about", "contact", "services",
                   "menu", "book", "booking", "appointment", "reviews", "testimonials", "shop", "products", "blog"];
 const SKIP = /\.(pdf|jpe?g|png|gif|svg|webp|zip|mp4|mp3|css|js)(\?|$)/i;
+const JUNK = /\/(terms|terms-of-service|terms-and-conditions|privacy|privacy-policy|cookie|cookies|cookies-policy|accessibility|legal|login|log-in|signin|sign-in|signup|sign-up|register|cart|checkout|account|my-account|wp-admin|wp-login|feed|tag|tags|category|author|search|sitemap)(\/|$|\?)/i;
+const PER_SECTION = 3;                                 // at most this many pages under one first path segment
 
 async function get(url: string, ms = 8000): Promise<string | null> {
   try {
@@ -50,7 +52,13 @@ export function brandColors(html: string): string[] {
 }
 
 const norm = (u: string) => u.replace(/#.*$/, "").replace(/\/+$/, "");
-const rank = (u: string) => { const i = PRIORITY.findIndex(k => u.toLowerCase().includes(k)); return i === -1 ? 999 : i; };
+const depth = (u: string) => { try { return new URL(u).pathname.split("/").filter(Boolean).length; } catch { return 9; } };
+const section = (u: string) => { try { return new URL(u).pathname.split("/").filter(Boolean)[0] ?? ""; } catch { return ""; } };
+// shallow pages first (/menu before /menu/samosa), then the useful ones (/faq, /contact) ahead of the rest
+export const rank = (u: string) => {
+  const i = PRIORITY.findIndex(k => u.toLowerCase().includes(k));
+  return depth(u) * 10 + (i === -1 ? 9 : Math.min(i, 8));
+};
 
 export async function scrapeSite(startUrl: string, log: (m: string) => void)
   : Promise<{ sources: Source[]; colors: string[]; logo: string | null; thin: boolean }> {
@@ -58,6 +66,7 @@ export async function scrapeSite(startUrl: string, log: (m: string) => void)
   const seen = new Set<string>();
   const queue: string[] = [startUrl];
   const sources: Source[] = [];
+  const perSection = new Map<string, number>();
   let colors: string[] = [];
   let logo: string | null = null;
   let thin = false;                                  // big HTML, almost no text → rendered with JavaScript
@@ -66,12 +75,15 @@ export async function scrapeSite(startUrl: string, log: (m: string) => void)
     const url = queue.shift()!;
     if (seen.has(norm(url))) continue;
     seen.add(norm(url));
+    const sec = section(url);
+    if (sec && (perSection.get(sec) ?? 0) >= PER_SECTION) continue;
     const html = await get(url);
     if (!html) continue;
     const { title, text } = pageText(html);
     if (sources.length === 0 && html.length > 40_000 && text.length < 500) thin = true;
     if (text.length < 200) continue;
     sources.push({ url, title, kind: "page", text });
+    if (sec) perSection.set(sec, (perSection.get(sec) ?? 0) + 1);
     log(`Reading ${title || url}`);
 
     const $ = cheerio.load(html);
@@ -84,11 +96,11 @@ export async function scrapeSite(startUrl: string, log: (m: string) => void)
     $("a[href]").each((_, a) => {
       try {
         const u = new URL($(a).attr("href")!, url);
-        if (u.origin === origin && !SKIP.test(u.pathname) && !seen.has(norm(u.href))) links.push(u.href);
+        if (u.origin === origin && !SKIP.test(u.pathname) && !JUNK.test(u.pathname + "/") && !seen.has(norm(u.href))) links.push(u.href);
       } catch { /* ignore bad hrefs */ }
     });
-    links.sort((a, b) => rank(a) - rank(b));
     queue.push(...links);
+    queue.sort((a, b) => rank(a) - rank(b));               // re-sort the whole frontier: shallow, useful pages first
   }
   return { sources, colors, logo, thin };
 }

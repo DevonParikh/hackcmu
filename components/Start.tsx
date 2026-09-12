@@ -4,6 +4,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+// Consecutive "Reading …" lines become one counting line; only the last three lines are shown.
+function collapse(lines: string[]): { text: string; sub?: string }[] {
+  const out: { text: string; sub?: string }[] = [];
+  let reading = 0, last = "";
+  const flush = () => { if (reading) { out.push({ text: `Reading ${reading} page${reading === 1 ? "" : "s"}`, sub: last }); reading = 0; } };
+  for (const l of lines) {
+    if (l.startsWith("Reading ")) { reading++; last = l.slice(8); continue; }
+    flush(); out.push({ text: l });
+  }
+  flush();
+  return out.slice(-3);
+}
+
 export default function Start() {
   const [url, setUrl] = useState("");
   const [lines, setLines] = useState<string[]>([]);
@@ -54,13 +67,16 @@ export default function Start() {
           {busy ? "Reading…" : "Analyze"}
         </button>
       </form>
-      {lines.length > 0 && (
-        <ol className="mt-8 space-y-1.5 border-l-2 border-line pl-4 text-muted" aria-live="polite">
-          {lines.map((l, i) => (
-            <li key={i} className={i === lines.length - 1 && busy ? "text-ink" : ""}>{l}</li>
+      {lines.length > 0 && (() => { const shown = collapse(lines); return (
+        <ul className="mt-8 space-y-2 border-l-2 border-line pl-4 text-muted" aria-live="polite">
+          {shown.map((l, i) => (
+            <li key={`${i}-${l.text}`} className={i === shown.length - 1 && busy ? "text-ink" : ""}>
+              {l.text}
+              {l.sub && <span className="ml-2 block truncate text-sm text-muted/80 sm:inline">{l.sub}</span>}
+            </li>
           ))}
-        </ol>
-      )}
+        </ul>
+      ); })()}
     </div>
   );
 }
