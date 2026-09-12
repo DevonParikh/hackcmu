@@ -1,11 +1,11 @@
 import * as cheerio from "cheerio";
 
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
-export const MAX_DOC_CHARS = 200_000;
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_DOC_CHARS = 200_000;
 const TEXT_TYPES = /^(text\/|application\/(json|csv|xml))/i;
 const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|xml|html?|rtf)$/i;
 
-export interface ExtractedDocument {
+interface ExtractedDocument {
   title: string;
   text: string;
   kind: "pdf" | "html" | "text";

@@ -377,7 +377,7 @@ export function RunView({ id }: { id: string }) {
                     <p className="text-sm font-semibold">
                       Time on routine questions now <Badge kind="you" />
                     </p>
-                    <RangeBar rows={[{ label: "Routine questions, per week", low: impact.load.low, high: impact.load.high, badge: "you" }]} unit="h/week" />
+                    <RangeBar rows={[{ label: "Routine questions, per week", low: impact.load.low, high: impact.load.high }]} unit="h/week" />
                     <p className="text-xs" style={{ color: "var(--muted)" }}>
                       {impact.load.arithmetic}. Mapping used: {BUCKET_LABELS.share[run.intake?.routineShare ?? "unsure"]} = {Math.round(BUCKETS.share[run.intake?.routineShare ?? "unsure"][0] * 100)}-
                       {Math.round(BUCKETS.share[run.intake?.routineShare ?? "unsure"][1] * 100)}%; {BUCKET_LABELS.minutes[run.intake?.minutesPerInquiry ?? "unsure"]} = {BUCKETS.minutes[run.intake?.minutesPerInquiry ?? "unsure"][0]}-
@@ -398,7 +398,7 @@ export function RunView({ id }: { id: string }) {
                     <p className="text-sm font-semibold">
                       Time drafting replies or listings now <Badge kind="you" />
                     </p>
-                    <RangeBar rows={[{ label: "Drafting, per month", low: impact.drafting.low, high: impact.drafting.high, badge: "you" }]} unit="h/month" />
+                    <RangeBar rows={[{ label: "Drafting, per month", low: impact.drafting.low, high: impact.drafting.high }]} unit="h/month" />
                     <p className="text-xs" style={{ color: "var(--muted)" }}>
                       {impact.drafting.arithmetic}.
                     </p>
@@ -537,10 +537,10 @@ function Recommendations({ run, impact, tools, onBuilt, onBuilding, minutesRange
   }
   const recentLog = run.log.slice(-3);
 
-  const expectRows: { label: string; low: number; high: number | null; badge: "you" | "estimate" | "measured"; note?: string }[] = [];
-  if (impact.load) expectRows.push({ label: "Routine questions now", low: impact.load.low, high: impact.load.high, badge: "you" });
-  if (impact.couldMove?.kind === "range" && impact.couldMove.low !== null && impact.couldMove.high !== null) expectRows.push({ label: "Could move to the assistant", low: impact.couldMove.low, high: impact.couldMove.high, badge: "estimate", note: impact.couldMove.note });
-  if (impact.couldMove?.kind === "atMost" && impact.couldMove.atMost !== null) expectRows.push({ label: "Could move, at most", low: impact.couldMove.atMost, high: null, badge: "estimate", note: impact.couldMove.note });
+  const expectRows: { label: string; low: number; high: number | null; note?: string }[] = [];
+  if (impact.load) expectRows.push({ label: "Routine questions now", low: impact.load.low, high: impact.load.high });
+  if (impact.couldMove?.kind === "range" && impact.couldMove.low !== null && impact.couldMove.high !== null) expectRows.push({ label: "Could move to the assistant", low: impact.couldMove.low, high: impact.couldMove.high, note: impact.couldMove.note });
+  if (impact.couldMove?.kind === "atMost" && impact.couldMove.atMost !== null) expectRows.push({ label: "Could move, at most", low: impact.couldMove.atMost, high: null, note: impact.couldMove.note });
 
   return (
     <>

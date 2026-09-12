@@ -166,7 +166,7 @@ async function fetchRaw(url: string, accept: RegExp, timeoutMs = PAGE_TIMEOUT_MS
 }
 
 /** Turns undici's "fetch failed" into something an owner can act on. */
-export function explainFetchError(e: Error): string {
+function explainFetchError(e: Error): string {
   if (e.name === "AbortError") return "it took too long to respond";
   const cause = (e as Error & { cause?: { code?: string; message?: string } }).cause;
   const code = cause?.code || "";
@@ -192,7 +192,7 @@ function linesOf(raw: string): string {
     .join("\n");
 }
 
-export function extractPage(url: string, html: string, status: number): CrawledPage {
+function extractPage(url: string, html: string, status: number): CrawledPage {
   const $ = cheerio.load(html);
   const lang = ($("html").attr("lang") || "").toLowerCase().slice(0, 2);
   const refresh = $('meta[http-equiv="refresh" i]').attr("content") || "";
@@ -410,7 +410,7 @@ const TECH: [string, RegExp][] = [
 ];
 
 /** Runs vendor patterns over asset references and inline scripts only, never over visible prose. */
-export function detectTech(pages: CrawledPage[]): string[] {
+function detectTech(pages: CrawledPage[]): string[] {
   const assets: string[] = [];
   for (const p of pages) {
     const html = p.html;
@@ -495,7 +495,7 @@ function pickLogo(pages: CrawledPage[]): string | null {
   return null;
 }
 
-export async function detectBrand(pages: CrawledPage[], rootUrl: string): Promise<Brand> {
+async function detectBrand(pages: CrawledPage[], rootUrl: string): Promise<Brand> {
   const counts = new Map<string, number>();
   const sheets = new Set<string>();
   for (const p of pages.slice(0, 6)) {
@@ -532,7 +532,7 @@ const PHONE_RE = /(?<![\d#\w/])(?:\+\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]
 const STREET = "(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct|Place|Pl|Square|Sq|Parkway|Pkwy|Highway|Hwy|Terrace|Ter|Circle|Cir|Trail|Trl)";
 const ADDRESS_RE = new RegExp(`^\\d{1,5}[A-Za-z]?\\s+[A-Za-z0-9.'-]+(?:\\s+[A-Za-z0-9.'-]+){0,4}\\s+${STREET}\\.?(?:[\\s,]+(?:Suite|Ste|Unit|Floor|Fl|#)\\s*[\\w-]+)?(?:,?\\s+[A-Z][A-Za-z .'-]+,?\\s+[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?)?$`);
 
-export function detectContact(pages: CrawledPage[], rootUrl: string): Contact {
+function detectContact(pages: CrawledPage[], rootUrl: string): Contact {
   let email: string | null = null, phone: string | null = null, address: string | null = null;
   const rootHost = bareHost(new URL(rootUrl).host);
   const emails: string[] = [];
@@ -605,7 +605,7 @@ function segments(p: CrawledPage): string[] {
 }
 const SOCIAL_HOSTS = new Set(["instagram.com", "facebook.com", "tiktok.com", "linkedin.com", "twitter.com", "x.com", "youtube.com", "pinterest.com", "threads.net"]);
 
-export function detectFeatures(pages: CrawledPage[], tech: string[]): FeatureChecklist {
+function detectFeatures(pages: CrawledPage[], tech: string[]): FeatureChecklist {
   const text = pages.map((p) => p.fullText).join("\n");
   const lower = text.toLowerCase();
   const segHas = (re: RegExp) => pages.some((p) => segments(p).some((s) => re.test(s)));

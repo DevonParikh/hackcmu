@@ -13,7 +13,7 @@ import { detectSignals } from "./signals";
 // appends never interleave with stage writes (MongoDB itself is atomic per document,
 // but keeping writes ordered also keeps the log readable).
 const locks = new Map<string, Promise<unknown>>();
-export function withRunLock<T>(runId: string, fn: () => Promise<T>): Promise<T> {
+function withRunLock<T>(runId: string, fn: () => Promise<T>): Promise<T> {
   const prev = locks.get(runId) ?? Promise.resolve();
   const next = prev.then(fn, fn);
   const settled = next.catch(() => undefined);
@@ -37,7 +37,7 @@ export function appendLog(runId: string, msg: string, level: LogEntry["level"] =
   });
 }
 
-export function updateRun(runId: string, fields: Partial<RunDoc>): Promise<void> {
+function updateRun(runId: string, fields: Partial<RunDoc>): Promise<void> {
   return withRunLock(runId, async () => {
     await (await runs()).updateOne({ _id: runId }, { $set: { ...fields, updatedAt: now() } });
   });

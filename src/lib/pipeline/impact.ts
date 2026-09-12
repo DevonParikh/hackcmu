@@ -8,8 +8,6 @@ import type { CompanyDoc, Competitor, EvalCase, FeatureKey, Intake, Opportunity,
  * the owner's inputs, the self-test, and logged conversations. No benchmarks, no guesses.
  */
 
-export { BUCKETS, BUCKET_LABELS };
-
 export type CoverageState = "full" | "half" | "none";
 
 export interface TopicRow {
@@ -88,7 +86,7 @@ function coverageFor(topic: Topic, srcs: SourceDoc[]): { state: CoverageState; s
 }
 
 /** Wilson score interval at 80% confidence, rounded outward to 5%. */
-export function wilson(k: number, n: number): [number, number] {
+function wilson(k: number, n: number): [number, number] {
   if (n === 0) return [0, 1];
   const z = 1.28;
   const p = k / n;

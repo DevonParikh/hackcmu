@@ -34,7 +34,7 @@ function connect() {
   return { client, db, ready };
 }
 
-export async function getDb(): Promise<Db> {
+async function getDb(): Promise<Db> {
   if (!globalThis.__tailorMongo) globalThis.__tailorMongo = connect();
   const conn = globalThis.__tailorMongo;
   try {

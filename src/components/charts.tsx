@@ -11,7 +11,6 @@ import type { EvalCase } from "@/lib/types";
 const C = {
   series: "#0f8f7c",
   seriesLight: "#6dbdb0",
-  series2: "#c27a12",
   good: "#2e7d4f",
   warn: "#b9791e",
   bad: "#b23a3a",
@@ -214,7 +213,7 @@ export function OutcomeStrip({ evals, demo }: { evals: EvalCase[]; demo: boolean
 
 // ---------- Range bars ----------
 
-export function RangeBar({ rows, unit, max }: { rows: { label: string; low: number; high: number | null; badge: "you" | "estimate" | "measured"; note?: string }[]; unit: string; max?: number }) {
+export function RangeBar({ rows, unit, max }: { rows: { label: string; low: number; high: number | null; note?: string }[]; unit: string; max?: number }) {
   const labelW = 190, barW = 360, rowH = 44, top = 8;
   const scaleMax = Math.max(max ?? 0, ...rows.map((r) => r.high ?? r.low), 1);
   const x = (v: number) => labelW + (v / scaleMax) * barW;

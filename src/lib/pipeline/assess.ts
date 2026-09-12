@@ -87,7 +87,7 @@ ${buildCorpus(sources)}`,
   };
 }
 
-export function heuristicAssessment(crawl: CrawlResult, competitors: Competitor[], signals: FrictionSignal[]): Assessment {
+function heuristicAssessment(crawl: CrawlResult, competitors: Competitor[], signals: FrictionSignal[]): Assessment {
   const { features, pages, rootUrl, tech } = crawl;
   const pageFor = (k: FeatureKey) => {
     const re: Record<FeatureKey, RegExp> = {

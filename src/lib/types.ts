@@ -2,14 +2,14 @@ import { z } from "zod";
 
 // ---------- Shared value schemas (used for structured outputs and DB docs) ----------
 
-export const EvidenceSchema = z.object({
+const EvidenceSchema = z.object({
   quote: z.string().describe("Short verbatim quote from the source, or a concrete observation about it"),
   sourceUrl: z.string().describe("URL the evidence came from"),
   observed: z.boolean().optional().describe("true when this is an observation about the page (e.g. no form found), not a verbatim quote"),
 });
 export type Evidence = z.infer<typeof EvidenceSchema>;
 
-export const ContactSchema = z.object({
+const ContactSchema = z.object({
   email: z.string().nullable(),
   phone: z.string().nullable(),
   address: z.string().nullable(),
@@ -60,7 +60,6 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   careersPage: "Careers page",
   mobileReady: "Works on phones",
 };
-export const FeatureChecklistSchema = z.record(z.enum(FEATURE_KEYS), z.boolean());
 export type FeatureChecklist = Record<FeatureKey, boolean>;
 
 export const CompetitorSchema = z.object({
@@ -76,13 +75,13 @@ export type Competitor = z.infer<typeof CompetitorSchema> & {
   tech?: string[];
 };
 
-export const ClaimSchema = z.object({
+const ClaimSchema = z.object({
   claim: z.string(),
   evidence: z.array(EvidenceSchema).min(1),
 });
 export type Claim = z.infer<typeof ClaimSchema>;
 
-export const FrictionSignalSchema = z.object({
+const FrictionSignalSchema = z.object({
   id: z.string().describe("snake_case identifier, e.g. support_by_email_only"),
   task: z.string().describe("The repetitive chore"),
   who: z.string().describe("Who does it today"),
@@ -98,7 +97,7 @@ export const AssessmentSchema = z.object({
 });
 export type Assessment = z.infer<typeof AssessmentSchema>;
 
-export const OpportunitySchema = z.object({
+const OpportunitySchema = z.object({
   templateId: z.string(),
   score: z.number(),
   impact: z.number(),
@@ -111,21 +110,21 @@ export const OpportunitySchema = z.object({
 });
 export type Opportunity = z.infer<typeof OpportunitySchema>;
 
-export const KnowledgeChunkSchema = z.object({
+const KnowledgeChunkSchema = z.object({
   title: z.string(),
   url: z.string(),
   text: z.string(),
 });
 export type KnowledgeChunk = z.infer<typeof KnowledgeChunkSchema>;
 
-export const BrandSchema = z.object({
+const BrandSchema = z.object({
   primary: z.string(),
   secondary: z.string(),
   logoUrl: z.string().nullable(),
 });
 export type Brand = z.infer<typeof BrandSchema>;
 
-export const ToolConfigSchema = z.object({
+const ToolConfigSchema = z.object({
   name: z.string(),
   tone: z.string(),
   offLimits: z.array(z.string()),
@@ -141,10 +140,9 @@ export const ToolConfigSchema = z.object({
 });
 export type ToolConfig = z.infer<typeof ToolConfigSchema>;
 
-export const EvalOutcomeSchema = z.enum(["answered", "handed_off", "failed"]);
-export type EvalOutcome = z.infer<typeof EvalOutcomeSchema>;
+const EvalOutcomeSchema = z.enum(["answered", "handed_off", "failed"]);
 
-export const EvalCaseSchema = z.object({
+const EvalCaseSchema = z.object({
   question: z.string(),
   answer: z.string(),
   pass: z.boolean(),
@@ -159,9 +157,9 @@ export type EvalCase = z.infer<typeof EvalCaseSchema>;
 
 // ---------- Owner intake (plain questions, every answer optional) ----------
 
-export const RoutineShareSchema = z.enum(["most", "half", "some", "unsure"]);
-export const MinutesBucketSchema = z.enum(["under2", "2to5", "5to10", "10to20", "over20", "unsure"]);
-export const ReplyTimeSchema = z.enum(["1h", "fewHours", "sameDay", "nextDay", "2to3days", "longer", "unsure"]);
+const RoutineShareSchema = z.enum(["most", "half", "some", "unsure"]);
+const MinutesBucketSchema = z.enum(["under2", "2to5", "5to10", "10to20", "over20", "unsure"]);
+const ReplyTimeSchema = z.enum(["1h", "fewHours", "sameDay", "nextDay", "2to3days", "longer", "unsure"]);
 
 export const IntakeSchema = z.object({
   inquiriesPerWeek: z.number().nonnegative().max(100_000).optional(),
@@ -189,7 +187,6 @@ export const BuildInputSchema = z.object({
   tone: z.string().optional().default(""),
   offLimits: z.array(z.string()).optional().default([]),
 });
-export type BuildInput = z.infer<typeof BuildInputSchema>;
 
 // ---------- Mongo documents ----------
 

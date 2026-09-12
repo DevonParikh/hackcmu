@@ -8,7 +8,7 @@ import { buildCorpus } from "./corpus";
 
 const PRIORITY = /faq|help|about|service|pricing|plan|menu|contact|hours|policy|book|product|shop/i;
 
-export function buildKnowledge(srcs: SourceDoc[], homeUrl: string, opts: { staffTool?: boolean; maxChars?: number } = {}): KnowledgeChunk[] {
+function buildKnowledge(srcs: SourceDoc[], homeUrl: string, opts: { staffTool?: boolean; maxChars?: number } = {}): KnowledgeChunk[] {
   const maxChars = opts.maxChars ?? 60_000;
   const isHome = (s: SourceDoc) => s.url.replace(/\/$/, "") === homeUrl.replace(/\/$/, "");
   const rank = (s: SourceDoc) => (isHome(s) ? 3 : s.kind === "user" ? 2 : PRIORITY.test(s.url + " " + s.title) ? 1 : 0);
@@ -28,7 +28,7 @@ export function buildKnowledge(srcs: SourceDoc[], homeUrl: string, opts: { staff
   return out;
 }
 
-export function slugify(s: string): string {
+function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "company";
 }
 

@@ -26,7 +26,7 @@ export async function profileCompany(opts: {
   return profile;
 }
 
-export function heuristicProfile(crawl: CrawlResult, name: string): CompanyProfile {
+function heuristicProfile(crawl: CrawlResult, name: string): CompanyProfile {
   const { pages, features, contact } = crawl;
   const home = pages[0];
   const about = pages.find((p) => /about/i.test(p.url) || /about/i.test(p.title));
