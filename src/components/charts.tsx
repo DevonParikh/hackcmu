@@ -69,9 +69,8 @@ export function TopicGrid({ topics, hasFiles }: { topics: TopicRow[]; hasFiles: 
                 return (
                   <g key={c.key}>
                     <title>{`${t.label} · ${c.label}: ${text(state)}${c.key === "site" && t.siteSource ? ` (${t.siteSource})` : ""}${c.key === "files" && t.fileSource ? ` (${t.fileSource})` : ""}`}</title>
-                    <rect x={x} y={y + 7} width={cellW - 16} height={rowH - 14} rx="4" fill={fill(state) === "none" ? C.paper : fill(state)} stroke={fill(state) === "none" ? C.grid : "none"} opacity={half ? 0.9 : 1} />
-                    {half && <rect x={x + (cellW - 16) / 2} y={y + 7} width={(cellW - 16) / 2} height={rowH - 14} rx="4" fill={C.paper} stroke={C.grid} />}
-                    <text x={x + (cellW - 16) / 2} y={y + rowH / 2 + 4} textAnchor="middle" fontSize="11" fill={fill(state) === "none" || half ? C.muted : "#fff"}>
+                    <rect x={x} y={y + 7} width={cellW - 16} height={rowH - 14} rx="4" fill={fill(state) === "none" ? C.paper : half ? "#dcefe9" : fill(state)} stroke={fill(state) === "none" ? C.grid : half ? C.seriesLight : "none"} />
+                    <text x={x + (cellW - 16) / 2} y={y + rowH / 2 + 4} textAnchor="middle" fontSize="11" fill={fill(state) === "none" ? C.muted : half ? C.ink : "#fff"}>
                       {text(state)}
                     </text>
                   </g>
@@ -88,22 +87,69 @@ export function TopicGrid({ topics, hasFiles }: { topics: TopicRow[]; hasFiles: 
 // ---------- Before / after route diagram ----------
 
 export function RouteDiagram({ channels, after, selfTest, inquiriesPerWeek, waitLabel, personLabel }: { channels: Impact["channels"]; after: boolean; selfTest: Impact["selfTest"]; inquiriesPerWeek?: number; waitLabel: string | null; personLabel: string }) {
-  const rowH = 34, boxW = 132, boxH = 26, left = 0, midX = after ? 200 : 210, rightX = after ? 420 : 330;
+  const rowH = 34, boxW = 132, boxH = 26, endW = 210, endH = 44;
+  const midX = 190, rightX = after ? 430 : 260;
   const n = Math.max(channels.length, 1);
-  const h = Math.max(n * rowH + 20, 120);
-  const w = after ? 620 : 480;
-  const centreY = 10 + (n * rowH) / 2 - boxH / 2;
   const answered = selfTest ? selfTest.answered : null;
   const total = selfTest ? selfTest.total : null;
   const counts = inquiriesPerWeek && answered !== null && total ? { yes: Math.round((inquiriesPerWeek * answered) / total), no: inquiriesPerWeek - Math.round((inquiriesPerWeek * answered) / total) } : null;
-  const solidLabel = after ? (answered !== null ? `answered from your pages${counts ? ` (about ${counts.yes} a week)` : ` (${answered} of ${total} in the test)`}` : "answered from your pages (build to measure)") : "";
-  const dashedLabel = after ? (answered !== null ? `everything else, with your contact details${counts ? ` (about ${counts.no} a week)` : ` (${(total ?? 0) - answered} of ${total})`}` : "everything else, with your contact details") : "";
+  const customerSub = answered !== null ? (counts ? `answered from your pages, about ${counts.yes} a week` : `answered from your pages, ${answered} of ${total} in the test`) : "answered from your pages (build to measure)";
+  const personSub = after
+    ? answered !== null
+      ? counts
+        ? `everything else, about ${counts.no} a week, with your contact details`
+        : `everything else, ${(total ?? 0) - answered} of ${total}, with your contact details`
+      : "everything else, with your contact details"
+    : waitLabel
+      ? `reply ${waitLabel}`
+      : "reply time not provided";
+  const chanH = 10 + n * rowH;
+  const endGap = 24;
+  const rightH = after ? endH * 2 + endGap : endH;
+  const h = Math.max(chanH, rightH + 10) + 26;
+  const w = rightX + endW + 4;
+  const chanMid = 10 + (n * rowH - rowH) / 2 + boxH / 2;
+  const custY = after ? Math.max(6, (h - 26) / 2 - rightH / 2) : 0;
+  const personY = after ? custY + endH + endGap : Math.max(6, chanMid - endH / 2);
+  const targetY = after ? chanMid : personY + endH / 2;
+  const wrap = (t: string, max = 34): string[] => {
+    const words = t.split(" ");
+    const lines: string[] = [];
+    let cur = "";
+    for (const wd of words) {
+      if ((cur + " " + wd).trim().length > max) {
+        lines.push(cur.trim());
+        cur = wd;
+      } else cur = (cur + " " + wd).trim();
+    }
+    if (cur) lines.push(cur);
+    return lines.slice(0, 2);
+  };
+  const EndBox = ({ x, y, title, sub, strong }: { x: number; y: number; title: string; sub: string; strong?: boolean }) => {
+    const lines = wrap(sub);
+    return (
+      <g>
+        <rect x={x} y={y} width={endW} height={endH} rx="6" fill={C.surface} stroke={strong ? C.series : C.grid} strokeWidth={strong ? 1.5 : 1} />
+        <text x={x + 10} y={y + 16} fontSize="12" fill={C.ink} fontWeight="600">
+          {title}
+        </text>
+        {lines.map((l, i) => (
+          <text key={i} x={x + 10} y={y + 29 + i * 11} fontSize="9.5" fill={C.muted}>
+            {l}
+          </text>
+        ))}
+      </g>
+    );
+  };
   return (
     <div className="chart-scroll">
-      <svg viewBox={`0 0 ${w} ${h + 30}`} width={w} height={h + 30} role="img" aria-label={after ? "Where questions go with the assistant" : "Where questions go today"}>
+      <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} role="img" aria-label={after ? "Where questions go with the assistant" : "Where questions go today"}>
         <defs>
           <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
             <path d="M0,0 L8,4 L0,8 z" fill={C.axis} />
+          </marker>
+          <marker id="arrow-teal" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill={C.series} />
           </marker>
         </defs>
         {channels.map((c, i) => {
@@ -111,54 +157,29 @@ export function RouteDiagram({ channels, after, selfTest, inquiriesPerWeek, wait
           const targetX = after ? midX : rightX;
           return (
             <g key={c.id}>
-              <rect x={left} y={y} width={boxW} height={boxH} rx="6" fill={C.surface} stroke={C.grid} />
-              <text x={left + 10} y={y + 17} fontSize="12" fill={C.ink}>
+              <rect x={0} y={y} width={boxW} height={boxH} rx="6" fill={C.surface} stroke={C.grid} />
+              <text x={10} y={y + 17} fontSize="12" fill={C.ink}>
                 {c.label}
               </text>
-              <line x1={left + boxW} y1={y + boxH / 2} x2={targetX - 4} y2={after ? centreY + boxH / 2 : centreY + boxH / 2} stroke={C.axis} strokeWidth="1.5" markerEnd="url(#arrow)" />
+              <line x1={boxW} y1={y + boxH / 2} x2={targetX - 4} y2={targetY} stroke={C.axis} strokeWidth="1.5" markerEnd="url(#arrow)" />
             </g>
           );
         })}
-        {after && (
+        {after ? (
           <g>
-            <rect x={midX} y={centreY - 4} width={boxW} height={boxH + 8} rx="8" fill={C.series} />
-            <text x={midX + boxW / 2} y={centreY + 16} fontSize="12" fill="#fff" textAnchor="middle" fontWeight="600">
+            <rect x={midX} y={chanMid - boxH / 2 - 4} width={boxW} height={boxH + 8} rx="8" fill={C.series} />
+            <text x={midX + boxW / 2} y={chanMid + 4} fontSize="12" fill="#fff" textAnchor="middle" fontWeight="600">
               Your assistant
             </text>
-            <line x1={midX + boxW} y1={centreY + 4} x2={rightX - 4} y2={centreY + 4} stroke={C.series} strokeWidth="2" markerEnd="url(#arrow)" />
-            <text x={midX + boxW + 6} y={centreY - 4} fontSize="10.5" fill={C.muted}>
-              {solidLabel.length > 44 ? solidLabel.slice(0, 43) + "…" : solidLabel}
-            </text>
-            <line x1={midX + boxW} y1={centreY + boxH} x2={rightX - 4} y2={centreY + boxH + 40} stroke={C.axis} strokeWidth="1.5" strokeDasharray="4 3" markerEnd="url(#arrow)" />
-            <text x={midX + boxW + 6} y={centreY + boxH + 54} fontSize="10.5" fill={C.muted}>
-              {dashedLabel.length > 44 ? dashedLabel.slice(0, 43) + "…" : dashedLabel}
-            </text>
-            <rect x={rightX} y={centreY - 4} width={boxW + 20} height={boxH + 8} rx="6" fill={C.surface} stroke={C.grid} />
-            <text x={rightX + (boxW + 20) / 2} y={centreY + 6} fontSize="12" fill={C.ink} textAnchor="middle" fontWeight="600">
-              A customer
-            </text>
-            <text x={rightX + (boxW + 20) / 2} y={centreY + 21} fontSize="10.5" fill={C.muted} textAnchor="middle">
-              answer in seconds, any hour
-            </text>
-            <rect x={rightX} y={centreY + boxH + 30} width={boxW + 20} height={boxH + 8} rx="6" fill={C.surface} stroke={C.grid} />
-            <text x={rightX + (boxW + 20) / 2} y={centreY + boxH + 40} fontSize="12" fill={C.ink} textAnchor="middle" fontWeight="600">
-              {personLabel}
-            </text>
-            <text x={rightX + (boxW + 20) / 2} y={centreY + boxH + 55} fontSize="10.5" fill={C.muted} textAnchor="middle">
-              still replies to these{waitLabel ? `, ${waitLabel}` : ""}
-            </text>
+            <line x1={midX + boxW} y1={chanMid - 4} x2={rightX - 4} y2={custY + endH / 2} stroke={C.series} strokeWidth="2" markerEnd="url(#arrow-teal)" />
+            <line x1={midX + boxW} y1={chanMid + 6} x2={rightX - 4} y2={personY + endH / 2} stroke={C.axis} strokeWidth="1.5" strokeDasharray="4 3" markerEnd="url(#arrow)" />
+            <EndBox x={rightX} y={custY} title="A customer, in seconds, any hour" sub={customerSub} strong />
+            <EndBox x={rightX} y={personY} title={personLabel} sub={personSub} />
           </g>
-        )}
-        {!after && (
+        ) : (
           <g>
-            <rect x={rightX} y={centreY - 4} width={boxW + 20} height={boxH + 8} rx="6" fill={C.surface} stroke={C.grid} />
-            <text x={rightX + (boxW + 20) / 2} y={centreY + 6} fontSize="12" fill={C.ink} textAnchor="middle" fontWeight="600">
-              {personLabel}
-            </text>
-            <text x={rightX + (boxW + 20) / 2} y={centreY + 21} fontSize="10.5" fill={C.muted} textAnchor="middle">
-              {waitLabel ? `reply ${waitLabel}` : "reply time not provided"}
-            </text>
-            <text x={0} y={h + 22} fontSize="11" fill={C.muted}>
+            <EndBox x={rightX} y={personY} title={personLabel} sub={personSub} />
+            <text x={0} y={h - 6} fontSize="11" fill={C.muted}>
               Every route ends at a person; nothing on the site answers on its own.
             </text>
           </g>
@@ -315,7 +336,7 @@ export function WaitBars({ today, assistantSeconds }: { today: Impact["wait"]["t
 
 export function SelfServeDots({ selfServe, companyName, afterBuild }: { selfServe: Impact["selfServe"]; companyName: string; afterBuild: boolean }) {
   const rows = [{ name: companyName, count: selfServe.company.count as number | null, features: selfServe.company.features, anyHour: (afterBuild ? true : selfServe.company.anyHour) as boolean | null, you: true }, ...selfServe.competitors.map((c) => ({ ...c, you: false }))];
-  const labelW = 170, axisW = 240, rowH = 30, top = 22;
+  const labelW = 200, axisW = 240, rowH = 30, top = 22;
   const x = (v: number) => labelW + (v / 6) * axisW;
   const w = labelW + axisW + 150, h = top + rows.length * rowH + 20;
   return (
@@ -338,7 +359,7 @@ export function SelfServeDots({ selfServe, companyName, afterBuild }: { selfServ
             <g key={r.name + i}>
               <title>{`${r.name}: ${r.count === null ? "not read" : `${r.count} of 6 (${r.features.join(", ") || "none"})`}`}</title>
               <text x={0} y={y + 4} fontSize="12.5" fill={C.ink} fontWeight={r.you ? 700 : 400}>
-                {r.name.length > 22 ? r.name.slice(0, 21) + "…" : r.name}
+                {r.name.length > 27 ? r.name.slice(0, 26) + "…" : r.name}
               </text>
               {r.count === null ? (
                 <circle cx={x(0)} cy={y} r="6" fill="none" stroke={C.axis} strokeWidth="2" />

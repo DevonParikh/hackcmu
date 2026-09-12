@@ -468,7 +468,7 @@ function EvidenceList({ evidence }: { evidence: Evidence[] }) {
     <ul className="mt-1 grid gap-0.5">
       {evidence.map((e, i) => (
         <li key={i} className="text-xs" style={{ color: "var(--muted)" }}>
-          {e.observed ? e.quote : `“${e.quote}”`}{" "}
+          {e.observed ? e.quote : `“${e.quote}”`} ·{" "}
           {e.sourceUrl === "user-input" ? (
             <Badge kind="you" />
           ) : e.sourceUrl.startsWith("user-upload:") ? (

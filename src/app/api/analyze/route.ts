@@ -78,8 +78,17 @@ export const POST = withApi(async (req: Request) => {
     createdAt: t,
     updatedAt: t,
   };
-  // One document per host, even when two analyses start at the same moment.
-  const company = (await compCol.findOneAndUpdate({ host }, { $setOnInsert: fresh }, { upsert: true, returnDocument: "after" })) ?? (await compCol.findOne({ host }));
+  // One document per host, even when two analyses start at the same moment. Concurrent upserts on a
+  // unique index can still collide (MongoDB documents this), so a duplicate-key error is retried.
+  let company: CompanyDoc | null = null;
+  for (let attempt = 0; attempt < 3 && !company; attempt++) {
+    try {
+      company = (await compCol.findOneAndUpdate({ host }, { $setOnInsert: fresh }, { upsert: true, returnDocument: "after" })) ?? (await compCol.findOne({ host }));
+    } catch (e) {
+      if ((e as { code?: number }).code !== 11000) throw e;
+      company = await compCol.findOne({ host });
+    }
+  }
   if (!company) return NextResponse.json({ error: "Could not save the business record. Please try again." }, { status: 500 });
   const run: RunDoc = {
     _id: newId(),
