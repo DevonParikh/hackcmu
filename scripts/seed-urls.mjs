@@ -9,18 +9,27 @@ const key = process.env.GEMINI_API_KEY;
 const model = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
 const kinds = "independent restaurants, cafes, bakeries, hair salons, barbers, nail salons, dentists, chiropractors, physical therapists, gyms, yoga studios, plumbers, electricians, HVAC companies, auto repair shops, florists, pet groomers, tutoring centers, photographers, tailors, dry cleaners";
 
-const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-  method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key },
-  body: JSON.stringify({
-    contents: [{ role: "user", parts: [{ text:
-      `List ${n} small, locally-owned businesses in ${city} that have their OWN website (not just a Facebook or Yelp page). ` +
-      `Spread across: ${kinds}. Output one line per business: the full website URL only, nothing else. No chains, no franchises.` }] }],
-    tools: [{ google_search: {} }],
-  }),
-});
-if (!r.ok) { console.error("Gemini", r.status, (await r.text()).slice(0, 300)); process.exit(1); }
-const data = await r.json();
-const text = (data.candidates?.[0]?.content?.parts ?? []).map(p => p.text ?? "").join("\n");
+const prompt = `List ${n} small, locally-owned businesses in ${city} that have their OWN website (not just a Facebook or Yelp page). ` +
+  `Spread across: ${kinds}. Output one line per business: the full website URL only, nothing else. No chains, no franchises.`;
+let text = "";
+const gkeys = (process.env.GEMINI_API_KEYS ?? key ?? "").split(",").map(s => s.trim()).filter(Boolean);
+for (const k of gkeys) {                                            // any Gemini key with quota left
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": k },
+    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }] }),
+  });
+  if (r.ok) { const d = await r.json(); text = (d.candidates?.[0]?.content?.parts ?? []).map(p => p.text ?? "").join("\n"); if (text) break; }
+  else console.error("Gemini", r.status, (await r.text()).replace(/\s+/g, " ").slice(0, 120));
+}
+if (!text && process.env.XAI_API_KEY) {                             // then Grok with web search
+  const r = await fetch("https://api.x.ai/v1/responses", {
+    method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${process.env.XAI_API_KEY}` },
+    body: JSON.stringify({ model: process.env.XAI_MODEL ?? "grok-4.20-non-reasoning", input: prompt, tools: [{ type: "web_search" }] }),
+  });
+  if (r.ok) { const d = await r.json(); text = (d.output ?? []).flatMap(o => o.content ?? []).filter(c => c.type === "output_text").map(c => c.text).join("\n") || d.output_text || ""; }
+  else console.error("xAI", r.status, (await r.text()).replace(/\s+/g, " ").slice(0, 120));
+}
+if (!text) { console.error("No provider could search. Write data/urls.txt by hand: one URL per line."); process.exit(1); }
 const urls = [...new Set((text.match(/https?:\/\/[^\s)\]>"']+/g) ?? []).map(u => u.replace(/[.,;:]+$/, "")))]
   .filter(u => !/facebook|instagram|yelp|google|linkedin|tiktok|x\.com|twitter/i.test(u));
 fs.mkdirSync("data", { recursive: true });

@@ -5,7 +5,7 @@
 //   judgeRelevance(pairs)           one Gemini call: does the quote SHOW the task happening, or only SUGGEST it?
 
 import { z } from "zod";
-import { generateJSON } from "./gemini";
+import { generateJSON } from "./llm";
 import type { Assessment, Evidence, Source, Confidence, VerifyReport, FrictionSignal } from "./schemas";
 
 export const normalize = (s: string) =>

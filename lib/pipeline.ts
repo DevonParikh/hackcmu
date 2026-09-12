@@ -11,7 +11,7 @@ import { ObjectId } from "mongodb";
 import { z } from "zod";
 import { db } from "./db";
 import { scrapeSite } from "./scrape";
-import { generateJSON, generateText } from "./gemini";
+import { generateJSON, generateText, lastProvider } from "./llm";
 import { Profile, Benchmark, Assessment, Ranking, TEMPLATES, type Source } from "./schemas";
 import { dedupeBoilerplate, verifyAssessment, judgeRelevance, applyVerdicts } from "./verify";
 import { extractFeatures } from "./features";
@@ -106,6 +106,7 @@ Assessment rules:
 
 ${corpus(sources)}`);
   mark("assess");
+  log(`Read by ${lastProvider()} in ${since()}`);
   name = profile.name || name;
   await save({ stage: "assessed", name, profile, assessment, timings });
 
