@@ -115,5 +115,45 @@ check((await db.collection("tools").countDocuments({ companyId: company._id })) 
 check((await db.collection("conversations").countDocuments({ toolId: tool._id })) === 1, "MongoDB conversation stored with history");
 await mc.close();
 
+// ----- Owner intake, impact arithmetic, staff-only uploads, usage counts, embed colour -----
+const fd = new FormData();
+fd.set("inquiriesPerWeek", "40");
+fd.set("routineShare", "half");
+fd.set("minutesPerInquiry", "2to5");
+fd.set("replyTime", "nextDay");
+fd.set("hourValue", "30");
+fd.set("topQuestions", "Do you have gluten-free bread?\nWhat is the wholesale minimum?");
+fd.append("files", new File(["Staff handbook\nThe alarm code is 4471. Wholesale minimum order is $75 per delivery."], "handbook.txt", { type: "text/plain" }));
+fd.append("audience", "staff");
+fd.append("files", new File(["Allergen sheet\nOur kitchen handles wheat, nuts, dairy, and eggs. Gluten-free buckwheat loaf on Saturdays."], "allergens.txt", { type: "text/plain" }));
+fd.append("audience", "public");
+const intake = await fetch(`${BASE}/api/runs/${runId}/intake`, { method: "POST", body: fd });
+const intakeBody = await intake.json();
+check(intake.ok && intakeBody.documents === 2, `POST intake saved 2 documents (${intake.status})`);
+let after = (await j(`/api/runs/${runId}`)).body;
+check(after.impact && after.impact.load && after.impact.load.low === 0.5 && after.impact.load.high === 2, `load range from 40 x 40-60% x 2-5 min = ${after.impact?.load?.low}-${after.impact?.load?.high} h/week (expected 0.5-2)`);
+check(after.impact.wait.today && after.impact.wait.today.source === "you" && after.impact.wait.today.high === 24, "reply-time band comes from the owner's answer");
+check(after.impact.topics.some((t) => t.starred && /gluten/i.test(t.label) && t.files === "full"), "owner question about gluten is covered by the uploaded allergen sheet");
+check(after.sources.some((s) => s.kind === "user" && s.audience === "staff"), "staff-only upload stored with its audience");
+
+// Rebuild the support tool: staff-only facts must not leak, public upload must be usable, owner questions come first
+const build3 = await j(`/api/runs/${runId}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ templateId: "support_faq", name: "Ask Maple 2" }) });
+check(build3.res.ok, "rebuilt support tool after intake");
+const tool3 = build3.body.tool;
+check(tool3.evals[0].starred && /gluten/i.test(tool3.evals[0].question), `owner's question tested first: ${tool3.evals[0].question}`);
+const leak = await j(`/api/tools/${tool3._id}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: "What is the alarm code?" }) });
+check(leak.res.ok && !/4471/.test(leak.body.reply), `staff-only fact does not leak: ${leak.body.reply?.slice(0, 80)}`);
+const pubAnswer = await j(`/api/tools/${tool3._id}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: "Do you have gluten-free bread?" }) });
+check(pubAnswer.res.ok && /buckwheat|saturday/i.test(pubAnswer.body.reply), `public upload answers: ${pubAnswer.body.reply?.slice(0, 80)}`);
+after = (await j(`/api/runs/${runId}`)).body;
+check(after.impact.selfTest && after.impact.selfTest.total === 10 && after.impact.couldMove && after.impact.couldMove.kind === "range", `could-move is a range after the build: ${after.impact.couldMove?.low}-${after.impact.couldMove?.high} h/week`);
+check(after.impact.value && after.impact.value.high > 0, `dollar value shown only with an hourly value: $${after.impact.value?.low}-${after.impact.value?.high}`);
+const usage = await j(`/api/tools/${tool3._id}/usage`);
+check(usage.res.ok && usage.body.replies === 2 && usage.body.answered + usage.body.handedOff === 2, `usage counts replies: ${JSON.stringify(usage.body)}`);
+const embed2 = await (await fetch(`${BASE}/embed.js?tool=${tool3._id}`)).text();
+check(embed2.includes("#8b3a2f") && embed2.includes("currentScript"), "embed script carries the brand colour and locates its own origin");
+const bad = await fetch(`${BASE}/api/runs/${runId}/build`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ templateId: "nope" }) });
+check(bad.status === 400, `unknown template rejected with 400 (${bad.status})`);
+
 console.log(fails.length ? `\n${fails.length} FAILED` : "\nALL PASSED");
 process.exit(fails.length ? 1 : 0);

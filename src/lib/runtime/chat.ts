@@ -82,7 +82,7 @@ export function retrieve(chunks: KnowledgeChunk[], query: string): { chunk: Know
   const df = new Map<string, number>();
   for (const s of sents) for (const t of new Set(s.terms)) df.set(t, (df.get(t) ?? 0) + 1);
   // A word that appears in most sentences (the business name, "bakery") cannot carry an answer on its own.
-  const informative = (t: string) => (df.get(t) ?? 0) / N < 0.3;
+  const informative = (t: string) => N < 8 || (df.get(t) ?? 0) / N < 0.3;
   const avgLen = sents.reduce((n, s) => n + s.terms.length, 0) / N;
   const k1 = 1.2, b = 0.75;
   const scored = sents.map((s) => {
@@ -210,9 +210,11 @@ function demoChat(tool: ToolDoc, history: { role: "user" | "assistant"; content:
             { ask: "a phone number or email", test: /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/i },
           ];
     const next = slots.find((sl) => !sl.test.test(said)) ?? null;
-    const fact = hit && hit.sentences.length && hit.score >= 2 ? ` From our site: ${hit.sentences[0]}` : "";
-    if (!next) return `Thanks, I have what I need. Someone from ${name.replace(/ assistant$/i, "")} will confirm with you. ${escalation(tool)}`;
-    return `Got it.${fact} Could you share ${next.ask}?`;
+    // Answer a direct question first (from the structured facts or the site), then ask for the next detail.
+    const direct = factAnswer(tool, lower) ?? (hit && hit.sentences.length && hit.score >= 2 ? `From our site: ${hit.sentences[0]}` : "");
+    const company = tool.config.companyName || name;
+    if (!next) return `${direct ? direct + " " : ""}Thanks, I have what I need. Someone from ${company} will confirm with you. ${escalation(tool)}`;
+    return `${direct ? direct + " " : "Got it. "}Could you share ${next.ask}?`;
   }
   const fact = factAnswer(tool, lower);
   if (fact) return fact;
