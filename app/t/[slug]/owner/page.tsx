@@ -82,7 +82,7 @@ export default async function Owner({ params }: { params: Promise<{ slug: string
                   <span className={`w-20 font-semibold ${r.landed ? "text-green" : "text-red"}`}>{r.landed ? "Settled" : "Refused"}</span>
                   <span className="tnum">{r.amount} to {r.to}</span>
                   <span className="text-muted">{new Date(r.ts).toLocaleString()}</span>
-                  <a href={r.url} target="_blank" rel="noopener" className="text-sm underline">explorer</a>
+                  {r.url ? <a href={r.url} target="_blank" rel="noopener" className="text-sm underline">explorer</a> : <span className="text-sm text-muted">local chain</span>}
                 </li>
               ))}
             </ol>

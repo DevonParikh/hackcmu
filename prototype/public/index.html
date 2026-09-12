@@ -20,6 +20,7 @@
   main { max-width: 680px; margin: 0 auto; padding: 44px 24px 96px; }
   h1 { font: 500 20px/1.2 var(--display); margin: 0 0 6px; }
   .lede { margin: 0 0 40px; color: var(--muted); max-width: 52ch; }
+  .who { margin: -28px 0 32px; color: var(--muted); font-size: 15px; }
   a { color: var(--blue); }
   button { font: inherit; cursor: pointer; border-radius: 6px; }
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
@@ -87,6 +88,7 @@
 <main>
   <h1>Allowance</h1>
   <p class="lede">A payment agent the network can say no to. Its spending cap is a Solana token delegation, not a line in a prompt.</p>
+  <p class="who" id="who" hidden></p>
 
   <section class="numbers" aria-live="polite">
     <div>
@@ -135,7 +137,7 @@ const $     = s => document.querySelector(s);
 const SR    = window.SpeechRecognition || window.webkitSpeechRecognition;
 const esc   = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 const xplr  = sig => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
-let token = "USDH", pendingId = null;
+let token = "USDH", cluster = "devnet", pendingId = null;
 
 const status = m => { $("#status").textContent = m || ""; };
 
@@ -143,14 +145,29 @@ async function api(path, body) {
   const r = await fetch(API + path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
   if (r.status === 204) return null;
   const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { showWho({ auth: true, user: null }); throw new Error("Sign in first (link above)."); }
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
 
+// Auth0: who is talking to the agent. Off (hidden) unless the server has a tenant configured.
+function showWho(me) {
+  const el = $("#who");
+  if (!me.auth) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = me.user
+    ? `Signed in as <b>${esc(me.user.email || me.user.name || "you")}</b> · your login picks the delegate key (${esc(me.delegate || "default")}) · <a href="/logout">sign out</a>`
+    : `<a href="/login">Sign in</a> to talk to the agent. Your login decides which delegate key the session gets; the chain decides what that key may spend.`;
+  const locked = !me.user;
+  $("#mic").disabled = locked || !SR; $("#text").disabled = locked; $("#askForm button").disabled = locked;
+}
+async function refreshMe() { try { showWho(await api("/api/me")); } catch {} }
+
 async function refreshState() {
   try {
     const s = await api("/api/state");
-    token = s.token;
+    token = s.token; cluster = s.cluster || "devnet";
+    if (cluster !== "devnet") status(`${cluster}: a private ledger, not a public chain.`);
     $("#allowance").textContent = s.allowance;
     $("#balance").textContent   = s.balance;
     $("#token").textContent     = s.token;
@@ -167,7 +184,8 @@ async function refreshLog() {
 function row(r) {
   const cls   = r.blocked ? "refused" : r.landed ? "settled" : "noted";
   const label = r.blocked ? "Refused" : r.landed ? "Settled" : r.error === "declined at confirmation" ? "Cancelled" : r.error === "dry-run" ? "Dry run" : "Failed";
-  const link  = r.signature ? `<a href="${xplr(r.signature)}" target="_blank" rel="noopener">explorer</a>` : "<span></span>";
+  const link  = r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">explorer</a>`
+              : r.signature ? `<span class="sig" title="${esc(r.signature)}">${esc(r.signature.slice(0, 6))}…</span>` : "<span></span>";
   return `<li class="row ${cls}"><span class="tag">${label}</span><span>${esc(r.amount ?? "—")} to ${esc(r.to ?? "—")}</span><q class="said">${esc(r.input)}</q>${link}</li>`;
 }
 
@@ -261,7 +279,7 @@ function showResult(r) {
   const reason = JSON.stringify(r.chainError ?? "");
   $("#verdict").textContent = r.blocked
     ? `The agent did what it was told. The token program refused: ${reason.includes('"Custom":1') ? "insufficient funds — not the wallet's, the agent's allowance." : reason} The cap lives on the chain, not in the prompt.`
-    : r.landed ? `${r.amount} ${token} to ${r.to}, settled on devnet.` : r.error;
+    : r.landed ? `${r.amount} ${token} to ${r.to}, settled on ${cluster}.` : r.error;
   $("#link").href = r.url || "#"; $("#link").hidden = !r.url;
   $("#result").hidden = false;
 }
@@ -279,7 +297,7 @@ $("#send").onclick   = confirm;
 $("#cancel").onclick = decline;
 if (!SR) { $("#mic").disabled = true; $("#mic").title = "Voice needs Chrome or Safari"; }
 
-refreshState(); refreshLog();
+refreshMe(); refreshState(); refreshLog();
 </script>
 </body>
 </html>

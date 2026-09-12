@@ -30,7 +30,7 @@ export async function chainState(): Promise<ChainState | null> {
 }
 
 export type RefundResult = {
-  amount: string; to: string; signature: string; url: string;
+  amount: string; to: string; signature: string; url: string | null;   // null off devnet (localnet has no explorer)
   blocked: boolean; landed: boolean; chainError: unknown;
   balanceBefore: string; allowanceBefore: string; allowanceAfter: string | null;
   why: "allowance" | "balance" | "other" | null;     // which limit refused it, for the card
@@ -76,4 +76,4 @@ export async function setAllowance(amount: number): Promise<{ allowance: string 
   return { allowance: core.fmt(a.delegatedAmount) };
 }
 
-export const explorerUrl = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+export const explorerUrl = (sig: string) => (process.env.SOLANA_RPC && !/devnet/.test(process.env.SOLANA_RPC) ? null : `https://explorer.solana.com/tx/${sig}?cluster=devnet`);

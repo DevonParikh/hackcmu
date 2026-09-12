@@ -172,5 +172,5 @@ export type ToolEvent = {
   question: string;
   reply: string;
   handoff: boolean;
-  refund: { amount: string; to: string; url: string; landed: boolean; blocked: boolean } | null;
+  refund: { amount: string; to: string; url: string | null; landed: boolean; blocked: boolean } | null;
 };

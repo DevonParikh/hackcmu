@@ -7,64 +7,110 @@
 //   ELEVENLABS_VOICE_ID=...      default 21m00Tcm4TlvDq8ikWAM
 //   ELEVENLABS_MODEL=...         default eleven_flash_v2_5
 //   PORT=3000
+//
+// Login (Auth0), on when all three are set — without them the page is open, which is fine on a laptop:
+//   AUTH0_ISSUER_BASE_URL=https://<tenant>.us.auth0.com   AUTH0_CLIENT_ID=...   AUTH0_SECRET=<32+ random chars>
+//   AUTH0_BASE_URL=https://agent.example.com               (this server's public URL; defaults to http://localhost:PORT)
+//   DELEGATES=alice@x.com=keys/agent.json,bob@x.com=keys/agent-bob.json
+// With login on: /api/intent, /api/confirm and /api/decline need a session; the login's email picks the delegate
+// keypair from DELEGATES (else the default AGENT_KEYPAIR); and every audit row records who asked.
 
 import express from "express";
 import { randomUUID } from "node:crypto";
-import { prepare, execute, audit, readLog, getState, TOKEN, oneLine } from "../money/core.mjs";
+import { fileURLToPath } from "node:url";
+import { auth } from "express-openid-connect";
 
+let core;
+try { core = await import("../money/core.mjs"); }
+catch (e) { console.error(`\n  ${String(e?.message ?? e).replace(/\s+/g, " ")}\n`); process.exit(1); }
+const { prepare, execute, audit, readLog, getState, loadDelegate, TOKEN, CLUSTER, RPC, oneLine } = core;
+
+const PORT = process.env.PORT ?? 3000;
 const app = express();
 app.use(express.json());
+
+// ---------------------------------------------------------------- who is talking to the agent (Auth0)
+const AUTH0 = ["AUTH0_ISSUER_BASE_URL", "AUTH0_CLIENT_ID", "AUTH0_SECRET"].every(k => process.env[k]);
+if (AUTH0) app.use(auth({
+  authRequired: false, auth0Logout: true,
+  secret: process.env.AUTH0_SECRET, clientID: process.env.AUTH0_CLIENT_ID, issuerBaseURL: process.env.AUTH0_ISSUER_BASE_URL,
+  baseURL: process.env.AUTH0_BASE_URL ?? `http://localhost:${PORT}`,
+}));
+const user = req => (AUTH0 && req.oidc?.isAuthenticated() ? req.oidc.user : null);
+const who  = req => user(req)?.email ?? user(req)?.sub ?? null;
+const gate = (req, res, next) => (!AUTH0 || user(req) ? next() : res.status(401).json({ error: "Sign in first.", login: "/login" }));
+
+// login → delegate keypair. One token account has one approved delegate, so most logins share the default key;
+// the map is for a second owner/agent pair. The chain, not this table, decides whether a key may spend.
+const DELEGATES = Object.fromEntries((process.env.DELEGATES ?? "").split(",").map(s => s.trim()).filter(Boolean)
+  .map(s => s.split("=").map(x => x.trim())).filter(([k, v]) => k && v).map(([k, v]) => [k.toLowerCase(), v]));
+const keyCache = new Map();
+function delegateFor(req) {
+  const p = DELEGATES[String(who(req) ?? "").toLowerCase()];
+  if (!p) return undefined;
+  if (!keyCache.has(p)) keyCache.set(p, loadDelegate(p));
+  return keyCache.get(p);
+}
+
+app.get("/api/me", (req, res) => {
+  const u = user(req);
+  res.json({ auth: AUTH0, user: u ? { email: u.email ?? null, name: u.name ?? null } : null, login: "/login", logout: "/logout",
+             delegate: delegateFor(req) ? "mapped" : "default" });
+});
 app.use((req, res, next) => {                       // permissive CORS: page on localhost, API anywhere
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Headers", "content-type");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
-app.use(express.static(new URL("./public", import.meta.url).pathname));
+app.use(express.static(fileURLToPath(new URL("./public", import.meta.url))));
 
 const pending = new Map();                          // id → prepared intent, awaiting a human
 
 app.get("/api/state", async (req, res) => {
-  try { res.json({ token: TOKEN, ...(await getState()) }); }
+  try { res.json({ token: TOKEN, ...(await getState({ agent: delegateFor(req) })) }); }
   catch (e) { res.status(500).json({ error: oneLine(e) }); }
 });
 
 // Parse, resolve, simulate. Nothing is sent. Returns the read-back and a pending id.
-app.post("/api/intent", async (req, res) => {
+app.post("/api/intent", gate, async (req, res) => {
   const text = String(req.body?.text ?? "").trim();
   if (!text) return res.status(400).json({ error: "Say or type what you want to send." });
+  const agent = delegateFor(req);
   try {
-    const p  = await prepare(text);
+    const p  = await prepare(text, { agent });
     const id = randomUUID();
-    pending.set(id, p);
+    pending.set(id, { p, agent, who: who(req) });
     setTimeout(() => pending.delete(id), 10 * 60 * 1000);
     const { rawStr, ...view } = p;
     res.json({ id, token: TOKEN, ...view });
   } catch (e) {
     const error = oneLine(e);
-    await audit({ input: text, error });
+    await audit({ input: text, who: who(req), error });
     res.status(422).json({ error });
   }
 });
 
 // The human said yes. Send it and let the chain decide.
-app.post("/api/confirm", async (req, res) => {
-  const p = pending.get(req.body?.id);
-  if (!p) return res.status(404).json({ error: "Nothing is waiting to be sent. Ask again." });
+app.post("/api/confirm", gate, async (req, res) => {
+  const entry = pending.get(req.body?.id);
+  if (!entry) return res.status(404).json({ error: "Nothing is waiting to be sent. Ask again." });
   pending.delete(req.body.id);
-  const record = { input: p.input, intent: p.intent, amount: p.amount, to: p.rcpt.label, simulated: p.simulated,
+  const { p, agent } = entry;
+  const record = { input: p.input, who: who(req), agent: p.agent, intent: p.intent, amount: p.amount, to: p.rcpt.label, simulated: p.simulated,
                    signature: null, landed: false, blocked: false, chainError: null, error: null };
-  try { Object.assign(record, await execute(p)); }
+  try { Object.assign(record, await execute(p, { agent })); }
   catch (e) { record.error = oneLine(e); }
   record.loggedTo = await audit(record);
   res.json(record);
 });
 
-app.post("/api/decline", async (req, res) => {
-  const p = pending.get(req.body?.id);
-  if (p) {
+app.post("/api/decline", gate, async (req, res) => {
+  const entry = pending.get(req.body?.id);
+  if (entry) {
     pending.delete(req.body.id);
-    await audit({ input: p.input, intent: p.intent, amount: p.amount, to: p.rcpt.label,
+    const { p } = entry;
+    await audit({ input: p.input, who: who(req), agent: p.agent, intent: p.intent, amount: p.amount, to: p.rcpt.label,
                   simulated: p.simulated, error: "declined at confirmation" });
   }
   res.json({ ok: true });
@@ -94,8 +140,16 @@ app.post("/api/speak", async (req, res) => {
   } catch (e) { console.error("ElevenLabs", oneLine(e)); res.sendStatus(204); }
 });
 
-const PORT = process.env.PORT ?? 3000;
+// One line, never a stack trace: an unreachable login provider is the usual cause.
+app.use((err, req, res, next) => {
+  const m = oneLine(err);
+  console.error("server:", m);
+  res.status(err.status ?? 500).json({ error: /discovery|issuer|openid|ENOTFOUND|fetch failed|unexpected HTTP response/i.test(m) ? `Login provider unreachable (${process.env.AUTH0_ISSUER_BASE_URL}). Check the wifi, or run without AUTH0_* to demo without login.` : m });
+});
+
 app.listen(PORT, () => {
-  console.log(`agent listening on http://localhost:${PORT}`);
+  console.log(`agent listening on http://localhost:${PORT}   (${CLUSTER} · ${RPC})`);
+  console.log(`login: ${AUTH0 ? `Auth0 ${process.env.AUTH0_ISSUER_BASE_URL}${Object.keys(DELEGATES).length ? `, ${Object.keys(DELEGATES).length} mapped delegate key(s)` : ""}` : "off (set AUTH0_ISSUER_BASE_URL, AUTH0_CLIENT_ID, AUTH0_SECRET to require it)"}`);
+  if (CLUSTER === "localnet") console.log("LOCALNET: a private ledger, not a public chain — explorer links are off.");
   console.log(`voice: ${process.env.ELEVENLABS_API_KEY ? "ElevenLabs" : "browser (set ELEVENLABS_API_KEY to upgrade)"}`);
 });

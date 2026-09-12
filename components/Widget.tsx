@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 
 type Msg = { role: "user" | "assistant"; content: string; refund?: Refund | null; refundError?: string | null; handoff?: boolean };
-type Refund = { amount: string; to: string; url: string; landed: boolean; blocked: boolean; chainError: unknown; balanceBefore: string; allowanceBefore: string; allowanceAfter: string | null; why: "allowance" | "balance" | "other" | null };
+type Refund = { amount: string; to: string; signature: string; url: string | null; landed: boolean; blocked: boolean; chainError: unknown; balanceBefore: string; allowanceBefore: string; allowanceAfter: string | null; why: "allowance" | "balance" | "other" | null };
 
 const SR = typeof window !== "undefined" ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null;
 
@@ -103,7 +103,8 @@ function RefundCard({ r }: { r: Refund }) {
     <div className={`mt-3 rounded-md border-2 px-3 py-2 ${r.landed ? "border-green" : "border-red"}`}>
       <p className={`display text-lg font-bold tracking-wide ${r.landed ? "text-green" : "text-red"}`}>{r.landed ? "SETTLED" : "REFUSED"}</p>
       <p className="mt-1 text-sm">{r.landed ? `${r.amount} refunded to ${r.to}. The tool's allowance is now ${r.allowanceAfter}.` : refused}</p>
-      <a href={r.url} target="_blank" rel="noopener" className="mt-1 inline-block text-sm underline">View on Solana Explorer</a>
+      {r.url ? <a href={r.url} target="_blank" rel="noopener" className="mt-1 inline-block text-sm underline">View on Solana Explorer</a>
+             : <p className="mt-1 text-xs text-muted">Signature {r.signature.slice(0, 8)}… (local chain, no public explorer)</p>}
     </div>
   );
 }
