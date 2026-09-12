@@ -136,7 +136,11 @@ export type Run = {
   thin?: boolean;
   ranking?: Ranking;
   features?: Record<string, number>;  // lib/features.ts, deterministic, from the crawl
-  quickEstimate?: { hours: number; contributions: { feature: string; label: string; hours: number }[]; n: number; r2: number; mae: number } | null;
+  quickEstimate?: {
+    n: number;
+    template?: { id: string; name: string; prob: number; acc: number; baseline: number; reasons: { label: string; weight: number }[] };
+    hours?: { value: number; mae: number; contributions: { feature: string; label: string; hours: number }[] };
+  } | null;
   timings?: Record<string, number>;   // seconds since start, per stage
   createdAt: Date;
   updatedAt?: Date;

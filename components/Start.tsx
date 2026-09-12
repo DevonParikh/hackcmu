@@ -22,7 +22,11 @@ export default function Start() {
   const [url, setUrl] = useState("");
   const [lines, setLines] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [quick, setQuick] = useState<{ hours: number; contributions: { label: string; hours: number }[] } | null>(null);
+  const [quick, setQuick] = useState<{
+    n: number;
+    template?: { name: string; prob: number; acc: number; baseline: number; reasons: { label: string; weight: number }[] };
+    hours?: { value: number; mae: number; contributions: { label: string; hours: number }[] };
+  } | null>(null);
   const router = useRouter();
 
   async function analyze(e: React.FormEvent) {
@@ -72,11 +76,14 @@ export default function Start() {
       </form>
       {quick && (
         <div className="mt-8 rounded-md border border-line bg-panel px-5 py-4">
-          <p className="text-sm text-muted">Quick estimate, from the site's structure alone</p>
-          <p className="display mt-1 text-3xl font-semibold tabular-nums">about {quick.hours} hours a week</p>
+          <p className="text-sm text-muted">Quick read of the site's structure, before reading a word</p>
+          {quick.template && (
+            <p className="display mt-1 text-2xl font-semibold">Likely needs {quick.template.name} <span className="text-muted tabular-nums">({Math.round(quick.template.prob * 100)}%)</span></p>
+          )}
+          {quick.hours && <p className="display mt-1 text-2xl font-semibold tabular-nums">about {quick.hours.value} hours a week</p>}
           <p className="mt-1 text-sm text-muted">
-            {quick.contributions.filter(c => Math.abs(c.hours) >= 0.3).slice(0, 3).map(c => `${c.label} ${c.hours > 0 ? "+" : ""}${c.hours}h`).join(" · ")}
-            {" — the full read is on its way."}
+            {quick.template?.reasons.map(r => r.label).join(" · ")}
+            {quick.template?.reasons.length ? " — " : ""}the full read is on its way.
           </p>
         </div>
       )}

@@ -80,7 +80,8 @@ export async function runAnalysis(runId: ObjectId, url: string, log: Log, onRead
   const features = extractFeatures(sources, thin);
   const quickEstimate = estimate(features);
   if (quickEstimate) {
-    log(`Quick estimate from the site's structure: about ${quickEstimate.hours} hours a week. Reading the details…`);
+    const t = quickEstimate.template, h = quickEstimate.hours;
+    log(`Quick read of the site's structure: ${t ? `likely needs ${t.name} (${Math.round(t.prob * 100)}%)` : ""}${t && h ? ", " : ""}${h ? `about ${h.value} hours a week` : ""}. Reading the details…`);
     onEstimate?.(quickEstimate);
   }
   await save({ stage: "scraped", name, sources, brand: { colors, logo }, thin, features, quickEstimate, timings });
@@ -99,7 +100,7 @@ Assessment rules:
 - Every strength, weakness and friction signal needs at least one piece of evidence: a short direct quote and the source index it came from. Quote exactly; do not paraphrase.
 - frictionSignals: 3 to 6 things a person does by hand, repeatedly: answering the same questions by phone or email, chasing bookings, refund disputes, replying to reviews, writing listings.
 - Evidence must show the task HAPPENING (a review saying "I had to call", a page saying "email us to book"), not merely that the topic exists. An hours table is not evidence that people call about hours. If the only evidence is the topic existing, keep the signal but set confidence to low.
-- hoursPerWeek is an ESTIMATE, derived from the evidence, conservative. confidence is "low" unless two or more sources agree.
+- hoursPerWeek is an ESTIMATE, derived from the evidence, conservative. Most small businesses lose 3 to 12 hours a week to all of this combined; a single task is usually 1 to 4. Only go higher with strong evidence. confidence is "low" unless two or more sources agree.
 - label is the same task in 3 to 5 words for a chart axis ("Hours & delivery calls").
 - coverage.questions: 10 to 25 questions customers actually ask, taken from reviews, FAQ, and contact pages. answerable=true only if the site's own pages answer it.
 - Write task text the owner would recognise ("answering 'are you open Sunday' by phone"), not analyst language.

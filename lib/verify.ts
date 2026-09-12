@@ -57,7 +57,7 @@ export function earnedConfidence(ev: Evidence[]): Confidence {
 }
 
 const ORDER: Record<Confidence, number> = { low: 0, medium: 1, high: 2 };
-const CAP: Record<Confidence, number> = { low: 10, medium: 20, high: 40 };
+const CAP: Record<Confidence, number> = { low: 6, medium: 12, high: 25 };
 
 export function applyConfidence(signals: FrictionSignal[], rep: VerifyReport): FrictionSignal[] {
   let out = signals.map(f => {
@@ -67,8 +67,8 @@ export function applyConfidence(signals: FrictionSignal[], rep: VerifyReport): F
     if (hoursPerWeek > CAP[confidence]) { hoursPerWeek = CAP[confidence]; rep.clamped++; }
     return { ...f, confidence, hoursPerWeek };
   });
-  const total = out.reduce((s, f) => s + f.hoursPerWeek, 0);   // nobody has 60 hours of chores
-  if (total > 40) { const k = 40 / total; out = out.map(f => ({ ...f, hoursPerWeek: Math.round(f.hoursPerWeek * k * 2) / 2 })); rep.clamped++; }
+  const total = out.reduce((s, f) => s + f.hoursPerWeek, 0);   // a two-person shop does not have 40 hours of chores
+  if (total > 30) { const k = 30 / total; out = out.map(f => ({ ...f, hoursPerWeek: Math.round(f.hoursPerWeek * k * 2) / 2 })); rep.clamped++; }
   return out;
 }
 

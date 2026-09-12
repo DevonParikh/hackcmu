@@ -79,11 +79,12 @@ export default async function Report({ params }: { params: Promise<{ id: string 
             The biggest one: {signals[0].task}. Estimated from {src.length} sources; every number below links to where it came from.
             {run.timings?.rank != null && <> Analysed in {Math.round(run.timings.rank)} seconds.</>}
           </p>
-          {run.quickEstimate && (
+          {run.quickEstimate?.template && (
             <p className="mt-3 max-w-md text-sm text-muted">
-              Our instant estimate from the site's structure alone said <span className="tnum text-ink">{run.quickEstimate.hours}</span>
-              {" "}({run.quickEstimate.contributions.filter(c => Math.abs(c.hours) >= 0.3).slice(0, 3).map(c => `${c.label} ${c.hours > 0 ? "+" : ""}${c.hours}`).join(", ")}).
-              {" "}That model was trained on {run.quickEstimate.n} businesses; typical error ±{run.quickEstimate.mae} hours.
+              Before reading a word, our structure model guessed <span className="text-ink">{run.quickEstimate.template.name}</span>
+              {" "}({Math.round(run.quickEstimate.template.prob * 100)}%){run.quickEstimate.template.reasons.length ? ` from ${run.quickEstimate.template.reasons.map(r => r.label).join(", ")}` : ""}.
+              {top && tpl ? (tpl.id === run.quickEstimate.template.id ? " The full read agreed." : ` The full read chose ${tpl.name} instead.`) : ""}
+              {" "}Trained on {run.quickEstimate.n} businesses; right {Math.round(run.quickEstimate.template.acc * 100)}% of the time in cross-validation, against {Math.round(run.quickEstimate.template.baseline * 100)}% for always guessing the commonest tool.
             </p>
           )}
         </header>
