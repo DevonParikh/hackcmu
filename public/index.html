@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allowance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=IBM+Plex+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #E8ECEA; --panel: #F5F7F6; --ink: #14213D; --muted: #5F6B72; --line: #C3CBC8;
+    --blue: #1D4E89; --green: #2E7D5B; --red: #A4203C;
+    --display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.5 var(--body); }
+  main { max-width: 680px; margin: 0 auto; padding: 44px 24px 96px; }
+  h1 { font: 500 20px/1.2 var(--display); margin: 0 0 6px; }
+  .lede { margin: 0 0 40px; color: var(--muted); max-width: 52ch; }
+  a { color: var(--blue); }
+  button { font: inherit; cursor: pointer; border-radius: 6px; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* hero: the number that lives on chain */
+  .numbers { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 40px; }
+  .big { font: 700 clamp(72px, 16vw, 128px)/0.95 var(--display); font-variation-settings: "opsz" 96; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .label { color: var(--muted); margin-top: 6px; }
+  .wallet { color: var(--muted); padding-bottom: 10px; }
+  .wallet b { color: var(--ink); font-weight: 600; }
+
+  /* ask */
+  .ask { display: flex; align-items: center; gap: 16px; }
+  .mic { width: 72px; height: 72px; flex: 0 0 72px; border: 0; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; position: relative; }
+  .mic svg { width: 28px; height: 28px; }
+  .mic.live::after { content: ""; position: absolute; inset: -6px; border: 2px solid var(--blue); border-radius: 50%; animation: pulse 1.2s ease-out infinite; }
+  @keyframes pulse { from { transform: scale(1); opacity: .8; } to { transform: scale(1.5); opacity: 0; } }
+  form { display: flex; flex: 1; gap: 8px; min-width: 240px; }
+  input { flex: 1; min-width: 0; font: inherit; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  input::placeholder { color: #8b969c; }
+  .primary { background: var(--ink); color: #fff; border: 1px solid var(--ink); padding: 12px 18px; }
+  .ghost { background: transparent; color: var(--ink); border: 1px solid var(--ink); padding: 12px 18px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { min-height: 1.5em; margin: 12px 0 0 88px; color: var(--muted); }
+
+  /* read-back: a document waiting for a signature */
+  .readback { margin-top: 28px; padding: 22px 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  .heard { margin: 0 0 10px; color: var(--muted); }
+  .heard q { color: var(--ink); }
+  .sentence { font: 500 22px/1.35 var(--display); margin: 0 0 10px; }
+  .fine { margin: 0 0 18px; color: var(--muted); font-size: 15px; }
+  .actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* the verdict: one bold thing on the page */
+  .result { margin-top: 32px; }
+  .stamp { display: inline-block; font: 800 34px/1 var(--display); letter-spacing: .06em; padding: 8px 20px; border: 3px solid currentColor; border-radius: 6px; transform: rotate(-5deg); animation: slam .22s cubic-bezier(.2,.8,.2,1) both; }
+  .stamp.settled { color: var(--green); }
+  .stamp.refused { color: var(--red); }
+  .stamp.failed  { color: var(--muted); }
+  @keyframes slam { from { transform: rotate(-5deg) scale(1.8); opacity: 0; } to { transform: rotate(-5deg) scale(1); opacity: 1; } }
+  .verdict { margin: 18px 0 6px; max-width: 56ch; }
+  .sig { font: 14px var(--mono); color: var(--muted); word-break: break-all; }
+
+  /* ledger */
+  .ledger { margin-top: 56px; }
+  h2 { font: 600 15px/1.4 var(--body); margin: 0 0 8px; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  .row { display: grid; grid-template-columns: 80px 1fr 2fr auto; gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); }
+  .row .tag { font-weight: 600; }
+  .row.refused .tag { color: var(--red); }
+  .row.settled .tag { color: var(--green); }
+  .row.noted .tag { color: var(--muted); }
+  .row .said { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row a { font-size: 15px; }
+  .empty { color: var(--muted); padding: 10px 0; border-top: 1px solid var(--line); }
+  @media (max-width: 560px) {
+    .status { margin-left: 0; }
+    .row { grid-template-columns: 80px 1fr; }
+    .row .said { grid-column: 1 / -1; }
+  }
+  @media (prefers-reduced-motion: reduce) { .stamp, .mic.live::after { animation: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Allowance</h1>
+  <p class="lede">A payment agent the network can say no to. Its spending cap is a Solana token delegation, not a line in a prompt.</p>
+
+  <section class="numbers" aria-live="polite">
+    <div>
+      <div class="big" id="allowance">—</div>
+      <div class="label">the agent can spend, enforced on chain</div>
+    </div>
+    <div class="wallet"><b id="balance">—</b> <span id="token">USDH</span> in the wallet</div>
+  </section>
+
+  <section class="ask">
+    <button class="mic" id="mic" aria-label="Tap and speak">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+    </button>
+    <form id="askForm">
+      <input id="text" placeholder="send 20 to ravi" autocomplete="off" aria-label="What should the agent do?">
+      <button class="primary" type="submit">Ask</button>
+    </form>
+  </section>
+  <p class="status" id="status" aria-live="polite"></p>
+
+  <section class="readback" id="readback" hidden>
+    <p class="heard">You said <q id="heard"></q></p>
+    <p class="sentence" id="sentence"></p>
+    <p class="fine" id="fine"></p>
+    <div class="actions">
+      <button class="ghost" id="cancel">Cancel</button>
+      <button class="primary" id="send">Send it</button>
+    </div>
+  </section>
+
+  <section class="result" id="result" hidden aria-live="assertive">
+    <div class="stamp" id="stamp">REFUSED</div>
+    <p class="verdict" id="verdict"></p>
+    <p class="sig"><a id="link" target="_blank" rel="noopener">View on Solana Explorer</a></p>
+  </section>
+
+  <section class="ledger">
+    <h2>Every attempt, including the ones the chain refused</h2>
+    <ol id="log"></ol>
+  </section>
+</main>
+
+<script>
+const API   = new URLSearchParams(location.search).get("api") || "";
+const $     = s => document.querySelector(s);
+const SR    = window.SpeechRecognition || window.webkitSpeechRecognition;
+const esc   = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const xplr  = sig => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+let token = "USDH", pendingId = null;
+
+const status = m => { $("#status").textContent = m || ""; };
+
+async function api(path, body) {
+  const r = await fetch(API + path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
+  if (r.status === 204) return null;
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+async function refreshState() {
+  try {
+    const s = await api("/api/state");
+    token = s.token;
+    $("#allowance").textContent = s.allowance;
+    $("#balance").textContent   = s.balance;
+    $("#token").textContent     = s.token;
+  } catch (e) { status("Can't reach the agent. Is server.mjs running?"); }
+}
+
+async function refreshLog() {
+  try {
+    const rows = await api("/api/log");
+    $("#log").innerHTML = rows.length ? rows.map(row).join("") : `<li class="empty">Nothing yet. Ask the agent to send something.</li>`;
+  } catch {}
+}
+
+function row(r) {
+  const cls   = r.blocked ? "refused" : r.landed ? "settled" : "noted";
+  const label = r.blocked ? "Refused" : r.landed ? "Settled" : r.error === "declined at confirmation" ? "Cancelled" : r.error === "dry-run" ? "Dry run" : "Failed";
+  const link  = r.signature ? `<a href="${xplr(r.signature)}" target="_blank" rel="noopener">explorer</a>` : "<span></span>";
+  return `<li class="row ${cls}"><span class="tag">${label}</span><span>${esc(r.amount ?? "—")} to ${esc(r.to ?? "—")}</span><q class="said">${esc(r.input)}</q>${link}</li>`;
+}
+
+// ---- voice in: the browser's own recognizer (needs localhost or https)
+function listen(timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    if (!SR) return reject(new Error("Voice needs Chrome or Safari. Type instead."));
+    const rec = new SR(); rec.lang = "en-US"; rec.interimResults = false; rec.maxAlternatives = 1;
+    let done = false;
+    const finish = (fn, v) => { if (done) return; done = true; clearTimeout(t); try { rec.stop(); } catch {} fn(v); };
+    const t = setTimeout(() => finish(reject, new Error("Didn't catch that.")), timeoutMs);
+    rec.onresult = e => finish(resolve, e.results[0][0].transcript);
+    rec.onerror  = e => finish(reject, new Error(e.error === "not-allowed" ? "Microphone is blocked. Allow it in the address bar." : "Didn't catch that."));
+    rec.onend    = () => finish(reject, new Error("Didn't catch that."));
+    rec.start();
+  });
+}
+
+// ---- voice out: ElevenLabs through the server; if it answers 204, the browser speaks instead
+async function speak(text) {
+  try {
+    const r = await fetch(API + "/api/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+    if (r.status === 200) {
+      const url = URL.createObjectURL(await r.blob());
+      await new Promise(res => { const a = new Audio(url); a.onended = a.onerror = res; a.play().catch(res); });
+      URL.revokeObjectURL(url);
+      return;
+    }
+  } catch {}
+  await new Promise(res => {
+    if (!("speechSynthesis" in window)) return res();
+    const u = new SpeechSynthesisUtterance(text); u.onend = u.onerror = res; speechSynthesis.speak(u);
+  });
+}
+
+// ---- the flow
+async function ask(text, fromVoice) {
+  $("#result").hidden = true; $("#readback").hidden = true; pendingId = null;
+  status("Thinking…");
+  try {
+    const p = await api("/api/intent", { text });
+    pendingId = p.id;
+    $("#heard").textContent    = p.input;
+    $("#sentence").textContent = p.readback;
+    $("#fine").textContent     = `Parsed by ${p.intent.parser}. Wallet holds ${p.balance} ${p.token}. `
+      + (p.simulated === "ok" ? "Simulation: the network would accept this." : "Simulation: the network would refuse this.")
+      + (p.intent.note ? ` ${p.intent.note}.` : "");
+    $("#readback").hidden = false; setButtons(true); status("");
+    await speak(p.readback + (fromVoice ? " Say yes or no." : ""));
+    if (fromVoice && pendingId === p.id) {
+      status("Listening for yes or no…");
+      try {
+        const ans = (await listen(6000)).toLowerCase();
+        if (/\b(yes|yeah|yep|confirm|send|do it|go ahead)\b/.test(ans)) return confirm();
+        if (/\b(no|nope|cancel|stop|don't)\b/.test(ans)) return decline();
+        status(`Heard "${ans}". Use the buttons.`);
+      } catch { status("Use the buttons."); }
+    }
+  } catch (e) { status(e.message); }
+}
+
+function setButtons(on) { $("#send").disabled = !on; $("#cancel").disabled = !on; }
+
+async function confirm() {
+  if (!pendingId) return;
+  const id = pendingId; pendingId = null;
+  setButtons(false); status("Sending…");
+  try {
+    const r = await api("/api/confirm", { id });
+    $("#readback").hidden = true; status("");
+    showResult(r);
+    await speak(r.blocked ? "The network refused it." : r.landed ? "Settled." : "That didn't go through.");
+  } catch (e) { status(e.message); setButtons(true); }
+  refreshState(); refreshLog();
+}
+
+async function decline() {
+  if (!pendingId) return;
+  const id = pendingId; pendingId = null;
+  $("#readback").hidden = true; status("Cancelled.");
+  try { await api("/api/decline", { id }); } catch {}
+  refreshLog();
+}
+
+function showResult(r) {
+  const stamp = $("#stamp");
+  const kind  = r.blocked ? "refused" : r.landed ? "settled" : "failed";
+  stamp.className = "stamp " + kind;
+  stamp.textContent = kind.toUpperCase();
+  stamp.style.animation = "none"; void stamp.offsetWidth; stamp.style.animation = "";
+  const reason = JSON.stringify(r.chainError ?? "");
+  $("#verdict").textContent = r.blocked
+    ? `The agent did what it was told. The token program refused: ${reason.includes('"Custom":1') ? "insufficient funds — not the wallet's, the agent's allowance." : reason} The cap lives on the chain, not in the prompt.`
+    : r.landed ? `${r.amount} ${token} to ${r.to}, settled on devnet.` : r.error;
+  $("#link").href = r.url || "#"; $("#link").hidden = !r.url;
+  $("#result").hidden = false;
+}
+
+// ---- wiring
+$("#mic").onclick = async () => {
+  if (!SR) return status("Voice needs Chrome or Safari. Type instead.");
+  $("#mic").classList.add("live"); status("Listening…");
+  try { const t = await listen(); $("#text").value = t; $("#mic").classList.remove("live"); await ask(t, true); }
+  catch (e) { status(e.message); }
+  finally { $("#mic").classList.remove("live"); }
+};
+$("#askForm").onsubmit = e => { e.preventDefault(); const t = $("#text").value.trim(); if (t) ask(t, false); };
+$("#send").onclick   = confirm;
+$("#cancel").onclick = decline;
+if (!SR) { $("#mic").disabled = true; $("#mic").title = "Voice needs Chrome or Safari"; }
+
+refreshState(); refreshLog();
+</script>
+</body>
+</html>
