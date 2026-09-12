@@ -31,7 +31,12 @@ export async function extractDocumentText(file: File): Promise<ExtractedDocument
     return { title: name, text: cleaned.slice(0, MAX_DOC_CHARS), kind: "pdf" };
   }
   const isHtml = /html/i.test(type) || /\.html?$/i.test(name);
-  const raw = await file.text();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const probe = bytes.subarray(0, 4096);
+  let odd = 0;
+  for (const b of probe) if (b === 0 || (b < 9 && b !== 0) || (b > 13 && b < 32)) odd++;
+  if (probe.length && odd / probe.length > 0.02) throw new Error(`${name} does not look like a text document. Upload PDF, text, Markdown, CSV, or HTML.`);
+  const raw = new TextDecoder("utf-8").decode(bytes);
   if (isHtml) {
     const $ = cheerio.load(raw);
     $("script, style, noscript, svg").remove();

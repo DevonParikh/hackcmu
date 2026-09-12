@@ -71,7 +71,7 @@ Prefer competitors serving the same customers in the same area or the same niche
       const crawl = await crawlSite(c.url, { maxPages: 8 });
       if (!crawl.pages.length) {
         log(`Could not read competitor ${c.url}; it is listed but not compared`);
-        if (c.name) out.push({ ...c, url: crawl.rootUrl });
+        if (c.name) out.push({ ...c, url: crawl.rootUrl, notesFrom: "web" });
         continue;
       }
       const home = crawl.pages[0];
@@ -87,6 +87,7 @@ Prefer competitors serving the same customers in the same area or the same niche
         weaknesses: c.weaknesses,
         features: crawl.features,
         tech: crawl.tech,
+        notesFrom: c.strengths.length || c.weaknesses.length ? "web" : "detected",
       });
     } catch (e) {
       log(`Could not read competitor ${c.url}: ${(e as Error).message}`);

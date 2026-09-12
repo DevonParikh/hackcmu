@@ -3,6 +3,7 @@ import { hasAccessFromRequest } from "@/lib/access";
 import { withApi } from "@/lib/api";
 import { companies, runs, sources, tools } from "@/lib/db";
 import { computeImpact } from "@/lib/pipeline/impact";
+import { companyForRun } from "@/lib/runCompany";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export const GET = withApi(async (req: Request, ctx: { params: Promise<{ id: str
     await runCol.updateOne({ _id: id }, { $set: { status: "failed", stage: "failed", error, updatedAt: new Date().toISOString() } });
     run = { ...run, status: "failed", stage: "failed", error };
   }
-  const company = await (await companies()).findOne({ _id: run.companyId });
+  const company = companyForRun(run, await (await companies()).findOne({ _id: run.companyId }));
   const built = await (await tools()).find({ runId: id }).sort({ createdAt: -1 }).toArray();
   const srcs = await (await sources()).find({ runId: id }).toArray();
   const impact = company && run.status === "done" ? computeImpact({ run, company, sources: srcs, tools: built }) : null;

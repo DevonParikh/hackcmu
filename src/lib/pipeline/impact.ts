@@ -34,11 +34,11 @@ export interface Impact {
   channels: { id: string; label: string; url: string | null }[];
   load: { low: number; high: number; arithmetic: string } | null;
   couldMove: { kind: "range" | "atMost" | "none"; low: number | null; high: number | null; atMost: number | null; arithmetic: string; note: string } | null;
-  value: { low: number; high: number } | null;
+  value: { kind: "range" | "atMost"; low: number; high: number } | null;
   drafting: { low: number; high: number; arithmetic: string } | null;
   wait: { today: { low: number; high: number; label: string; source: "you" | "site"; quote: string | null; url: string | null } | null; assistantSeconds: number | null };
   selfTest: { answered: number; handedOff: number; failed: number; total: number; intervalLow: number; intervalHigh: number; latencyMedianSeconds: number; demo: boolean; starred: number } | null;
-  reasons: Record<string, { signals: number; sources: number; needs: { covered: number; total: number; missing: string[] }; customerChange: string }>;
+  reasons: Record<string, { quotes: number; missing: number; sources: number; needs: { covered: number; total: number; missing: string[] }; customerChange: string }>;
   headline: string | null;
   notChecked: string[];
 }
@@ -48,41 +48,44 @@ interface Topic {
   label: string;
   re: RegExp;
   titleRe: RegExp;
+  /** Which self-test questions belong to this topic. */
+  qre: RegExp;
   nudge: string;
-  relevant: (ctx: { features: CompanyDoc["features"]; text: string }) => boolean;
+  relevant: (ctx: { features: CompanyDoc["features"]; text: string; place: boolean }) => boolean;
 }
 
 const always = () => true;
+const isPlace = ({ place }: { place: boolean }) => place;
 const TOPICS: Topic[] = [
-  { id: "hours", label: "Hours", re: /\b(opening hours|hours:|our hours|open (daily|monday|mon|tuesday|tue|wednesday|wed|thursday|thu|friday|fri|saturday|sat|sunday|sun|from|every)|closed (on )?(monday|mon|tuesday|tue|wednesday|wed|thursday|thu|friday|fri|saturday|sat|sunday|sun|weekends)|\d{1,2}(:\d{2})?\s?(am|pm)\s?(-|to|–)\s?\d{1,2}(:\d{2})?\s?(am|pm))\b/i, titleRe: /hours|contact|visit/i, nudge: "Add your opening hours (a line of text is enough)", relevant: always },
-  { id: "location", label: "Location and parking", re: /\b(\d{1,5}\s+[A-Za-z0-9.'-]+\s+(street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|suite)\b|located (at|in|on)|parking|directions|find us)\b/i, titleRe: /contact|location|visit|directions/i, nudge: "Add your address and parking or directions", relevant: always },
-  { id: "contact", label: "How to reach you", re: /\b(call us|phone:|email us|email:|contact us|reach us|text us|\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})\b/i, titleRe: /contact/i, nudge: "Add the email and phone customers should use", relevant: always },
-  { id: "offer", label: "What you offer", re: /\b(we (offer|provide|bake|make|sell|specialize|do)|our (services|products|menu|team)|services include|specialt(y|ies))\b/i, titleRe: /service|product|menu|about|what we do/i, nudge: "Add a short list of what you offer", relevant: always },
-  { id: "prices", label: "Prices", re: /\$\s?\d{1,5}(,\d{3})?(\.\d{2})?|\b(pricing|price list|our prices|rates|fees|from \$|starting at)\b/i, titleRe: /pric|menu|rates|fees|plans|insurance/i, nudge: "Upload a price list or menu", relevant: always },
-  { id: "booking", label: "How to book or order", re: /\b(book (online|now|an appointment|a table|your)|to (book|order|schedule|reserve)|appointments?|reservations?|order online|place an order|how to order)\b/i, titleRe: /book|order|appointment|reserv|schedule/i, nudge: "Add a line on how customers book or order", relevant: ({ features, text }) => !!features?.onlineBooking || !!features?.ecommerce || /\b(appointment|reservation|book (a|an|your|online)|to order|order online)\b/i.test(text) },
-  { id: "cancellation", label: "Cancellations and refunds", re: /\b(cancel(lation)?s?( policy)?|refunds?|no-?shows?|notice (required|of)|reschedul)\b/i, titleRe: /polic|terms|faq|cancel/i, nudge: "Upload your cancellation or refund policy", relevant: always },
-  { id: "payment", label: "Payment methods", re: /\b(we accept|accepted payment|cash|credit cards?|debit|visa|mastercard|american express|apple pay|financing|insurance|in-network|deposit)\b/i, titleRe: /payment|insurance|fees|faq/i, nudge: "Add which payments or insurance you accept", relevant: always },
-  { id: "included", label: "What is included / how it works", re: /\b(what('s| is) included|includes|how it works|the process|first (visit|session|appointment)|takes about|step[s]? (one|1|two|2)|what to expect|bring)\b/i, titleRe: /how it works|new (patients|clients|customers)|faq|process|what to expect/i, nudge: "Add what a first visit or order includes", relevant: always },
-  { id: "special", label: "Special needs (allergens, accessibility)", re: /\b(allerg(y|ies|ens)|gluten|dairy-?free|vegan|nut-?free|accessib(le|ility)|wheelchair|kids?|children|pets?|dogs?)\b/i, titleRe: /faq|allerg|accessib/i, nudge: "Add allergen or accessibility information", relevant: always },
-  { id: "shipping", label: "Shipping and returns", re: /\b(shipping|ships? (within|in)|delivery|returns?( policy)?|exchange)\b/i, titleRe: /shipping|returns|delivery|faq/i, nudge: "Upload your shipping and returns policy", relevant: ({ features }) => !!features?.ecommerce },
+  { id: "hours", label: "Hours", re: /\b(opening hours|hours:|our hours|office hours|open (daily|monday|mon|tuesday|tue|wednesday|wed|thursday|thu|friday|fri|saturday|sat|sunday|sun|from|every)|closed (on )?(monday|mon|tuesday|tue|wednesday|wed|thursday|thu|friday|fri|saturday|sat|sunday|sun|weekends)|\d{1,2}(:\d{2})?\s?(am|pm)\s?(-|to|–)\s?\d{1,2}(:\d{2})?\s?(am|pm))\b/i, titleRe: /hours|contact|visit/i, qre: /\b(hours?|open|opening|close|closed)\b/i, nudge: "Add your opening hours (a line of text is enough)", relevant: isPlace },
+  { id: "location", label: "Location and parking", re: /\b(\d{1,5}\s+[A-Za-z0-9.'-]+\s+(street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|suite)\b|located (at|in|on)|parking|directions|find us)\b/i, titleRe: /contact|location|visit|directions/i, qre: /\b(where|located|location|address|park|parking|directions)\b/i, nudge: "Add your address and parking or directions", relevant: isPlace },
+  { id: "contact", label: "How to reach you", re: /\b(call us|phone:|email us|email:|contact us|reach us|text us|\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})\b/i, titleRe: /contact/i, qre: /\b(contact|reach|phone number|email|call you|get in touch)\b/i, nudge: "Add the email and phone customers should use", relevant: always },
+  { id: "offer", label: "What you offer", re: /\b(we (offer|provide|bake|make|sell|specialize|serve)|our (services|products|menu)|services include|specialt(y|ies)|is (a|an) [a-z-]+ (software|app|service|platform|tool)|built for|designed for|helps? (you|small businesses|freelancers|teams|families))\b/i, titleRe: /service|product|menu|about|what we do/i, qre: /\b(offer|what do you (do|sell|make)|services|tell me about|what kind)\b/i, nudge: "Add a short list of what you offer", relevant: always },
+  { id: "prices", label: "Prices", re: /\$\s?\d{1,5}(,\d{3})?(\.\d{2})?|\b(pricing|price list|our prices|rates|fees|from \$|starting at)\b/i, titleRe: /pric|menu|rates|fees|plans|insurance/i, qre: /\b(price|prices|pricing|cost|costs|much|fee|fees|rate|rates)\b/i, nudge: "Upload a price list or menu", relevant: always },
+  { id: "booking", label: "How to book or order", re: /\b(book (online|now|an appointment|a table|your)|to (book|order|schedule|reserve)|appointments?|reservations?|order online|place an order|how to order)\b/i, titleRe: /book|order|appointment|reserv|schedule/i, qre: /\b(book|booking|appointment|reserve|reservation|schedule|order online|order a)\b/i, nudge: "Add a line on how customers book or order", relevant: ({ features, text }) => !!features?.onlineBooking || !!features?.ecommerce || /\b(appointment|reservation|book (a|an|your|online)|to order|order online)\b/i.test(text) },
+  { id: "cancellation", label: "Cancellations and refunds", re: /\b(cancel(lation)?s?( policy)?|refunds?|no-?shows?|notice (required|of)|reschedul)\b/i, titleRe: /polic|terms|faq|cancel/i, qre: /\b(cancel|cancellation|refund|reschedule|no-?show)\b/i, nudge: "Upload your cancellation or refund policy", relevant: always },
+  { id: "payment", label: "Payment methods", re: /\b(we accept|accepted (payment|cards)|payment methods?|pay (by|with|online)|cash or card|cash and (all )?(major )?cards|(visa|mastercard|american express|apple pay|carecredit)\b(?![^.]{0,20}required)|financing( available| options)?|in-network|deposit (required|of))\b/i, titleRe: /payment|insurance|fees|faq/i, qre: /\b(pay|payment|card|cards|cash|insurance|financing|deposit)\b/i, nudge: "Add which payments or insurance you accept", relevant: always },
+  { id: "included", label: "What is included / how it works", re: /\b(what('s| is) included|includes|how it works|the process|first (visit|session|appointment)|takes about|step[s]? (one|1|two|2)|what to expect|bring)\b/i, titleRe: /how it works|new (patients|clients|customers)|faq|process|what to expect/i, qre: /\b(include|included|how (does|do) .* work|first (visit|session|appointment)|expect|bring)\b/i, nudge: "Add what a first visit or order includes", relevant: always },
+  { id: "special", label: "Special needs (allergens, accessibility)", re: /\b(allerg(y|ies|ens|en)|gluten|dairy-?free|vegan|nut-?free|accessib(le|ility)|wheelchair)\b/i, titleRe: /faq|allerg|accessib/i, qre: /\b(allerg\w*|gluten|vegan|dairy|nut|nuts|accessib\w*|wheelchair)\b/i, nudge: "Add allergen or accessibility information", relevant: ({ text, place }) => place && /\b(allerg|gluten|vegan|dairy|nut|accessib|wheelchair|food|menu|bak|restaurant|cafe|kitchen)\b/i.test(text) },
+  { id: "shipping", label: "Shipping and returns", re: /\b(shipping|ships? (within|in)|delivery|returns?( policy)?|exchange)\b/i, titleRe: /shipping|returns|delivery|faq/i, qre: /\b(ship|shipping|deliver|delivery|return|returns)\b/i, nudge: "Upload your shipping and returns policy", relevant: ({ features }) => !!features?.ecommerce },
 ];
 
+/** Coverage is judged by how well the best page covers the topic, not by how many pages mention it. */
 function coverageFor(topic: Topic, srcs: SourceDoc[]): { state: CoverageState; source: string | null } {
-  let hits = 0;
-  let titleHit: SourceDoc | null = null;
-  let first: SourceDoc | null = null;
+  let best: { src: SourceDoc; matches: number; title: boolean } | null = null;
+  let total = 0;
   for (const s of srcs) {
     const matches = (s.text.match(new RegExp(topic.re.source, topic.re.flags.includes("g") ? topic.re.flags : topic.re.flags + "g")) || []).length;
     if (!matches) continue;
-    hits++;
-    first ??= s;
-    if (topic.titleRe.test(s.title) || topic.titleRe.test(s.url)) titleHit ??= s;
+    total += matches;
+    const title = topic.titleRe.test(s.title) || topic.titleRe.test(s.url);
+    const score = matches + (title ? 2 : 0);
+    if (!best || score > best.matches + (best.title ? 2 : 0)) best = { src: s, matches, title };
   }
-  const src = titleHit ?? first;
-  const label = src ? (src.kind === "user" ? src.title : src.url) : null;
-  if (hits >= 2 || (hits === 1 && titleHit)) return { state: "full", source: label };
-  if (hits === 1) return { state: "half", source: label };
-  return { state: "none", source: null };
+  if (!best) return { state: "none", source: null };
+  const label = best.src.kind === "user" ? best.src.title : best.src.url;
+  if (best.matches >= 2 || best.title || total >= 3) return { state: "full", source: label };
+  return { state: "half", source: label };
 }
 
 /** Wilson score interval at 80% confidence, rounded outward to 5%. */
@@ -135,16 +138,20 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
   const publicFiles = sources.filter((s) => s.kind === "user" && s.audience !== "staff");
   const allText = sources.map((s) => s.text).join("\n");
   // The newest chat-style tool drives coverage, self-test, and could-move; drafting tools only feed the drafting load.
-  const primaryTool = tools.find((t) => t.mode === "chat") ?? tools[0] ?? null;
+  const primaryTool = tools.find((t) => t.mode === "chat" && t.templateId !== "staff_assistant") ?? tools.find((t) => t.mode === "chat") ?? tools[0] ?? null;
   const notChecked: string[] = [];
 
   // ----- Topic coverage -----
-  const relevantTopics = TOPICS.filter((t) => t.relevant({ features: company.features, text: allText }));
+  const place = !!company.contact.address || /\b(visit us|located|our (store|shop|office|clinic|studio)|walk-?in|opening hours|office hours)\b/i.test(allText);
+  const relevantTopics = TOPICS.filter((t) => t.relevant({ features: company.features, text: allText, place }));
   const testByTopic = new Map<string, EvalCase["outcome"]>();
-  if (primaryTool) {
-    for (const e of primaryTool.evals) {
-      const topic = relevantTopics.find((t) => t.re.test(e.question) || new RegExp(t.label.split(" ")[0], "i").test(e.question));
-      if (topic && !testByTopic.has(topic.id)) testByTopic.set(topic.id, e.outcome);
+  if (primaryTool && primaryTool.mode === "chat") {
+    for (const t of relevantTopics) {
+      const matching = primaryTool.evals.filter((e) => t.qre.test(e.question));
+      if (!matching.length) continue;
+      // Report the most informative outcome: a failure beats a hand-off beats an answer.
+      const rank = { failed: 0, handed_off: 1, answered: 2 } as const;
+      testByTopic.set(t.id, matching.map((e) => e.outcome).sort((a, b) => rank[a] - rank[b])[0]);
     }
   }
   const topics: TopicRow[] = relevantTopics.map((t) => {
@@ -182,6 +189,8 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
   const best = (t: TopicRow) => (t.site === "full" || t.files === "full" ? 1 : t.site === "half" || t.files === "half" ? 0.5 : 0);
   const coverageShare = fixed.length ? fixed.reduce((n, t) => n + best(t), 0) / fixed.length : 0;
   const writtenDown = { covered: fixed.filter((t) => best(t) === 1).length, total: fixed.length };
+  const halfCount = fixed.filter((t) => best(t) === 0.5).length;
+  const coverageText = `${writtenDown.covered} of ${writtenDown.total} topics written down${halfCount ? ` plus ${halfCount} mentioned once (counted as half)` : ""} = ${Math.round(coverageShare * 100)}%`;
 
   // ----- Self-serve vs competitors -----
   const f = company.features;
@@ -254,21 +263,23 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
           low: r1(load.low * coverageShare * selfTest.intervalLow),
           high: r1(load.high * coverageShare * selfTest.intervalHigh),
           atMost,
-          arithmetic: `${load.low}-${load.high} h × ${writtenDown.covered} of ${writtenDown.total} topics written down × ${Math.round(selfTest.intervalLow * 100)}-${Math.round(selfTest.intervalHigh * 100)}% answered in the test = ${r1(load.low * coverageShare * selfTest.intervalLow)}-${r1(load.high * coverageShare * selfTest.intervalHigh)} h/week`,
+          arithmetic: `${load.low}-${load.high} h × ${coverageText} × ${Math.round(selfTest.intervalLow * 100)}-${Math.round(selfTest.intervalHigh * 100)}% answered in the test = ${r1(load.low * coverageShare * selfTest.intervalLow)}-${r1(load.high * coverageShare * selfTest.intervalHigh)} h/week`,
           note: "Handed-off and failed questions count as zero time moved; they still come to you.",
         };
       } else {
-        couldMove = { kind: "atMost", low: null, high: null, atMost, arithmetic: `${load.high} h × ${writtenDown.covered} of ${writtenDown.total} topics written down = at most ${atMost} h/week`, note: "Build and test the assistant to get the lower bound." };
+        couldMove = { kind: "atMost", low: null, high: null, atMost, arithmetic: `${load.high} h × ${coverageText} = at most ${atMost} h/week`, note: "Build and test the assistant to get the lower bound." };
       }
     } else if (tid === "lead_intake" || tid === "booking_intake") {
       const share = selfTest ? selfTest.answered / selfTest.total : coverageShare;
       const atMost = r1(load.high * share);
-      couldMove = { kind: "atMost", low: null, high: null, atMost, arithmetic: `${load.high} h × ${selfTest ? `${selfTest.answered} of ${selfTest.total} test requests completed` : `${writtenDown.covered} of ${writtenDown.total} topics written down`} = at most ${atMost} h/week`, note: "The details arrive collected; you still reply. Time a few replies in week one to see what that saves." };
+      couldMove = { kind: "atMost", low: null, high: null, atMost, arithmetic: `${load.high} h × ${selfTest ? `${selfTest.answered} of ${selfTest.total} test messages handled` : coverageText} = at most ${atMost} h/week`, note: "The details arrive collected; you still reply. Time a few replies in week one to see what that saves." };
     } else {
       couldMove = { kind: "none", low: null, high: null, atMost: null, arithmetic: "", note: "For drafting tools, see the drafting load below." };
     }
     if (intake.hourValue && couldMove?.kind === "range" && couldMove.low !== null && couldMove.high !== null) {
-      value = { low: Math.round(couldMove.low * intake.hourValue), high: Math.round(couldMove.high * intake.hourValue) };
+      value = { kind: "range", low: Math.round(couldMove.low * intake.hourValue), high: Math.round(couldMove.high * intake.hourValue) };
+    } else if (intake.hourValue && couldMove?.kind === "atMost" && couldMove.atMost !== null) {
+      value = { kind: "atMost", low: 0, high: Math.round(couldMove.atMost * intake.hourValue) };
     }
   }
   let drafting: Impact["drafting"] = null;
@@ -303,8 +314,11 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
     const needIds = NEEDS[o.templateId] ?? [];
     const rows = needIds.map((id) => topics.find((t) => t.id === id)).filter((t): t is TopicRow => !!t);
     const covered = rows.filter((t) => best(t) >= 0.5);
+    const quoteCount = matched.reduce((n, s) => n + s.evidence.filter((e) => !e.observed).length, 0);
+    const missingCount = matched.reduce((n, s) => n + s.evidence.filter((e) => e.observed).length, 0);
     reasons[o.templateId] = {
-      signals: matched.length,
+      quotes: quoteCount,
+      missing: missingCount,
       sources: urls.size,
       needs: { covered: covered.length, total: rows.length, missing: rows.filter((t) => best(t) < 0.5).map((t) => t.label) },
       customerChange: CUSTOMER_CHANGE[o.templateId] ?? "",
@@ -324,6 +338,7 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
   if (publicFiles.length || sources.some((s) => s.kind === "user")) notChecked.push("Uploaded files were used as written; we did not check that they are current or correct.");
   notChecked.push(intake.topQuestions.length ? "The self-test used your questions first, then questions we wrote from your site." : "Self-test questions were written by us from your site; list your own most-asked questions for a fairer test.");
   notChecked.push("Opening hours were not parsed, so nothing here assumes when you are open or closed.");
+  if (run.competitors.some((c) => c.notesFrom === "web")) notChecked.push("Competitor strengths and weaknesses written from web search were not verified against their pages; their feature checklist was.");
 
   return {
     badges: ["Seen on your site", "From your file", "Compared", "Your number", "Tested", "Estimate", "Measured"],

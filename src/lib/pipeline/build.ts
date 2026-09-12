@@ -1,20 +1,23 @@
 import { z } from "zod";
 import { isDemo, structured } from "../llm";
 import { getTemplate, type TemplateContext } from "../templates";
-import { INTENTS, answerChat, answerForm, knowledgeText, retrieve, tokens } from "../runtime/chat";
+import { INTENTS, answerChat, answerForm, isQuestion, knowledgeText, retrieve, tokens } from "../runtime/chat";
 import type { Brand, CompanyDoc, EvalCase, KnowledgeChunk, RunDoc, SourceDoc, ToolConfig, ToolDoc } from "../types";
 import { now } from "../db";
 import { buildCorpus } from "./corpus";
 
 const PRIORITY = /faq|help|about|service|pricing|plan|menu|contact|hours|policy|book|product|shop/i;
 
+/** Staff-only uploads and job postings never reach customer-facing tools, in any form. */
+function eligibleSources(srcs: SourceDoc[], staffTool: boolean): SourceDoc[] {
+  return srcs.filter((s) => (s.kind !== "user" || s.audience !== "staff" || staffTool) && (s.kind !== "job" || staffTool));
+}
+
 function buildKnowledge(srcs: SourceDoc[], homeUrl: string, opts: { staffTool?: boolean; maxChars?: number } = {}): KnowledgeChunk[] {
   const maxChars = opts.maxChars ?? 60_000;
   const isHome = (s: SourceDoc) => s.url.replace(/\/$/, "") === homeUrl.replace(/\/$/, "");
   const rank = (s: SourceDoc) => (isHome(s) ? 3 : s.kind === "user" ? 2 : PRIORITY.test(s.url + " " + s.title) ? 1 : 0);
-  // Staff-only uploads and job postings never reach customer-facing tools.
-  const eligible = srcs.filter((s) => (s.kind !== "user" || s.audience !== "staff" || opts.staffTool) && (s.kind !== "job" || opts.staffTool));
-  const sorted = [...eligible].sort((a, b) => rank(b) - rank(a));
+  const sorted = [...eligibleSources(srcs, !!opts.staffTool)].sort((a, b) => rank(b) - rank(a));
   const out: KnowledgeChunk[] = [];
   let used = 0;
   for (const s of sorted) {
@@ -45,6 +48,8 @@ export async function buildTool(opts: {
   const { company, run, sources, templateId, log } = opts;
   const template = getTemplate(templateId);
   if (!template) throw new Error(`Unknown template ${templateId}`);
+  const staffTool = templateId === "staff_assistant";
+  const visible = eligibleSources(sources, staffTool);
   const ctx: TemplateContext = {
     companyName: company.name,
     url: company.url,
@@ -52,14 +57,14 @@ export async function buildTool(opts: {
     features: company.features ?? ({} as CompanyDoc["features"] & object),
     contact: company.contact,
     signals: run.assessment?.frictionSignals ?? [],
-    pageTitles: sources.map((s) => s.title),
-    pageCount: sources.length,
-    text: sources.map((s) => s.text).join("\n").toLowerCase().slice(0, 200_000),
+    pageTitles: visible.map((s) => s.title),
+    pageCount: visible.length,
+    text: visible.map((s) => s.text).join("\n").toLowerCase().slice(0, 200_000),
     tone: opts.tone || company.profile?.toneOfVoice || "Friendly and straightforward",
     offLimits: opts.offLimits,
   };
   const brand: Brand = company.brand;
-  const knowledge = buildKnowledge(sources, company.url, { staffTool: templateId === "staff_assistant" });
+  const knowledge = buildKnowledge(sources, company.url, { staffTool });
   const ownerQuestions = (run.intake?.topQuestions ?? []).filter(Boolean);
   const config: ToolConfig = {
     name: opts.name || `${company.name} ${template.name.split(" ")[0].toLowerCase()} assistant`.replace(/assistant assistant$/, "assistant"),
@@ -97,17 +102,19 @@ export async function buildTool(opts: {
         schema: z.object({ questions: z.array(z.string()).min(6).max(10) }),
         effort: "low",
         system: `Write 10 realistic messages a real ${template.mode === "form" ? "staff member" : "customer"} would send to this tool, drawn from the company's own pages (services, hours, policies, reviews). Mix easy and hard; include one the site cannot answer.`,
-        user: `Tool: ${template.name} — ${template.summary}\nCompany: ${company.name}\n\nSOURCES:\n${buildCorpus(sources, 40_000)}`,
+        user: `Tool: ${template.name} — ${template.summary}\nCompany: ${company.name}\n\nSOURCES:\n${buildCorpus(visible, 40_000)}`,
       });
       questions = q.questions;
     } catch (e) {
       log(`Could not generate custom test questions (${(e as Error).message}); using defaults`);
     }
   }
-  // The owner's own most-asked questions go first (starred); generated ones fill the rest.
+  // The owner's own most-asked questions go first (starred); generated ones fill the rest, always ten.
   if (template.mode === "chat" && ownerQuestions.length) {
-    questions = [...ownerQuestions, ...questions.filter((q) => !ownerQuestions.includes(q))].slice(0, 10);
+    questions = [...ownerQuestions, ...questions.filter((q) => !ownerQuestions.includes(q))];
   }
+  for (const q of template.sampleQuestions(ctx)) if (questions.length < 10 && !questions.includes(q)) questions.push(q);
+  questions = [...new Set(questions.map((q) => q.trim()).filter(Boolean))].slice(0, 10);
   tool.config.suggestedQuestions = questions.slice(0, 4);
   log(`Running self-test with ${questions.length} questions${ownerQuestions.length ? ` (${Math.min(ownerQuestions.length, 10)} of them yours)` : ""}`);
   const evals: EvalCase[] = [];
@@ -148,15 +155,21 @@ async function grade(tool: ToolDoc, question: string, answer: string): Promise<G
     const expansionHits = new Set(expansions.filter((t) => (t === "$" ? answer.includes("$") : new RegExp(`\\b${t}\\b`).test(lowerA)))).size;
     const relevanceScore = baseHits + 0.5 * expansionHits + (expansions.includes("$") && answer.includes("$") ? 0.5 : 0);
     const hit = retrieve(tool.config.knowledge, question);
-    const factual = /^(We're located at|You can (call|email))/.test(answer) || (!!tool.config.about && answer === tool.config.about);
+    const factual = /^(We're located at|You can (call|email)|Here's what we offer:)/.test(answer) || (!!tool.config.about && answer === tool.config.about);
     const relevant = factual || (relevanceScore >= 1 && !!hit && hit.score >= 1);
     const asserted = factual || /\(Source: /.test(answer);
     if ((tool.templateId === "lead_intake" || tool.templateId === "booking_intake") && /could you share|i have what i need/i.test(answer)) {
-      return { question, answer, pass: true, note: relevant ? `Collected intake details and used "${hit!.chunk.title}"` : "Asked for the next intake detail", outcome: "answered" };
+      // A slot prompt only counts when the message was a detail to collect, or the question got a real answer first.
+      const answeredFirst = factual || /^From our site:/.test(answer) || (asserted && relevant);
+      const handedFirst = /couldn't find|can't see the calendar|one for a person/i.test(answer);
+      if (!isQuestion(question)) return { question, answer, pass: true, note: "Collected the next intake detail", outcome: "answered" };
+      if (answeredFirst) return { question, answer, pass: true, note: `Answered${hit ? ` from "${hit.chunk.title}"` : ""}, then asked for the next detail`, outcome: "answered" };
+      if (handedFirst) return { question, answer, pass: true, note: "Not on the site; said a person will confirm, and still collected the next detail", outcome: "handed_off" };
+      return { question, answer, pass: false, note: "Asked for details without answering the question", outcome: "failed" };
     }
     if (asserted && relevant) return { question, answer, pass: true, note: factual ? "Answered from the business details on the site" : `Answered from "${hit!.chunk.title}"`, outcome: "answered" };
     if (asserted && !relevant) return { question, answer, pass: false, note: "Quoted the site, but the quote does not match the question", outcome: "failed" };
-    if (escalates) return { question, answer, pass: true, note: "Not on the site; handed to a person with your contact details", outcome: "handed_off" };
+    if (escalates) return { question, answer, pass: true, note: "Could not find it on the site; handed to a person with your contact details", outcome: "handed_off" };
     return { question, answer, pass: false, note: "Neither answered from the site nor handed off", outcome: "failed" };
   }
   const verdict = await structured({

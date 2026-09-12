@@ -86,23 +86,21 @@ export function TopicGrid({ topics, hasFiles }: { topics: TopicRow[]; hasFiles: 
 
 // ---------- Before / after route diagram ----------
 
-export function RouteDiagram({ channels, after, selfTest, inquiriesPerWeek, waitLabel, personLabel }: { channels: Impact["channels"]; after: boolean; selfTest: Impact["selfTest"]; inquiriesPerWeek?: number; waitLabel: string | null; personLabel: string }) {
+export function RouteDiagram({ channels, after, selfTest, waitLabel, personLabel, selfServe }: { channels: Impact["channels"]; after: boolean; selfTest: Impact["selfTest"]; waitLabel: string | null; personLabel: string; selfServe: string[] }) {
   const rowH = 34, boxW = 132, boxH = 26, endW = 210, endH = 44;
   const midX = 190, rightX = after ? 430 : 260;
   const n = Math.max(channels.length, 1);
   const answered = selfTest ? selfTest.answered : null;
   const total = selfTest ? selfTest.total : null;
-  const counts = inquiriesPerWeek && answered !== null && total ? { yes: Math.round((inquiriesPerWeek * answered) / total), no: inquiriesPerWeek - Math.round((inquiriesPerWeek * answered) / total) } : null;
-  const customerSub = answered !== null ? (counts ? `answered from your pages in seconds, about ${counts.yes} a week, any hour` : `answered from your pages in seconds, ${answered} of ${total} in the test, any hour`) : "answered from your pages in seconds, any hour (build to measure)";
+  const customerSub = answered !== null ? `answered from your pages in seconds, ${answered} of ${total} in the test, any hour` : "answered from your pages in seconds, any hour (build to measure)";
   const personSub = after
     ? answered !== null
-      ? counts
-        ? `everything else, about ${counts.no} a week, with your contact details`
-        : `everything else, ${(total ?? 0) - answered} of ${total}, with your contact details`
+      ? `everything else, ${(total ?? 0) - answered} of ${total} in the test, with your contact details`
       : "everything else, with your contact details"
     : waitLabel
       ? `reply ${waitLabel}`
       : "reply time not provided";
+  const footer = after ? "" : selfServe.length ? `Customers can already help themselves with: ${selfServe.join(", ")}. Everything else ends at a person.` : "Every route ends at a person; nothing on the site answers on its own.";
   const chanH = 10 + n * rowH;
   const endGap = 24;
   const rightH = after ? endH * 2 + endGap : endH;
@@ -180,7 +178,7 @@ export function RouteDiagram({ channels, after, selfTest, inquiriesPerWeek, wait
           <g>
             <EndBox x={rightX} y={personY} title={personLabel} sub={personSub} />
             <text x={0} y={h - 6} fontSize="11" fill={C.muted}>
-              Every route ends at a person; nothing on the site answers on its own.
+              {footer}
             </text>
           </g>
         )}
@@ -235,10 +233,10 @@ export function OutcomeStrip({ evals, demo }: { evals: EvalCase[]; demo: boolean
 // ---------- Range bars ----------
 
 export function RangeBar({ rows, unit, max }: { rows: { label: string; low: number; high: number | null; note?: string }[]; unit: string; max?: number }) {
-  const labelW = 190, barW = 360, rowH = 44, top = 8;
+  const labelW = 190, barW = 340, rowH = 44, top = 8;
   const scaleMax = Math.max(max ?? 0, ...rows.map((r) => r.high ?? r.low), 1);
   const x = (v: number) => labelW + (v / scaleMax) * barW;
-  const w = labelW + barW + 90, h = top + rows.length * rowH + 18;
+  const w = labelW + barW + 150, h = top + rows.length * rowH + 18;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => Math.round(scaleMax * t * 10) / 10);
   return (
     <div className="chart-scroll">
@@ -367,7 +365,7 @@ export function SelfServeDots({ selfServe, companyName, afterBuild }: { selfServ
                 <circle cx={x(r.count)} cy={y} r="7" fill={r.you ? C.series : C.axis} stroke={C.surface} strokeWidth="2" />
               )}
               <text x={labelW + axisW + 16} y={y + 4} fontSize="11.5" fill={C.ink}>
-                {r.anyHour === null ? "?" : r.anyHour ? (r.you && afterBuild && !selfServe.company.anyHour ? "yes, via the assistant" : "yes") : "no"}
+                {r.anyHour === null ? "?" : r.anyHour ? (r.you && afterBuild && !selfServe.company.anyHour ? "yes, once the embed is on your site" : "yes") : "no"}
               </text>
             </g>
           );

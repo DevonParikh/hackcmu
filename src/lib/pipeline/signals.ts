@@ -10,11 +10,12 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
   const text = pages.map((p) => p.text).join("\n");
   const lower = text.toLowerCase();
 
-  if (!features.liveChat && (contact.email || contact.phone)) {
+  if (!features.liveChat && !features.faqPage && (contact.email || contact.phone)) {
+    const channels = [contact.email && "email", contact.phone && "phone"].filter(Boolean).join(" and ");
     out.push({
       id: "support_by_email_only",
-      task: "Answering the same customer questions by email and phone",
-      who: "Whoever answers the phone and inbox",
+      task: `Answering the same customer questions by ${channels}`,
+      who: contact.phone ? "Whoever answers the phone and inbox" : "Whoever answers the inbox",
       frequency: "Every time a customer asks",
       evidence: [
         {
@@ -37,9 +38,12 @@ export function detectSignals(crawl: CrawlResult, pain: string): FrictionSignal[
   // Only real "contact us to book/order" constructions count; "no appointment necessary" must not.
   const bookingRe = /\b((call|phone|email|text)( us)?( at [^.]{0,40})? to (order|book|reserve|schedule|make an appointment)|to (order|book|reserve|schedule|make an appointment),? (please )?(call|phone|email|text)|(appointments?|reservations?|bookings?|orders?) (are )?(taken |made |only )?(by|over the) phone|call (us )?(for|to make|to schedule|to book) (an appointment|a reservation|a booking|your appointment)|we confirm (every |all )?(order|appointment|booking)s? by phone|book (a|an|your) [a-z ]{0,30}by (phone|calling)|reserve (a|your) [a-z ]{0,30}by (phone|calling))\b/i;
   const negatesBooking = /\b(no appointments? (necessary|needed|required)|walk-?ins? (welcome|only)|no reservations?|first come)\b/i;
-  const bookingHit = pages
-    .map((pg) => ({ pg, sentence: pg.text.split(/(?<=[.!?])\s+|\n+/).find((x) => bookingRe.test(x) && !negatesBooking.test(x)) }))
-    .find((h) => h.sentence);
+  // Prefer the sentence that tells customers how to book ("to schedule, call us") over confirmation details.
+  const howToBook = /\b(to (order|book|reserve|schedule|make an appointment)( an? [a-z ]{0,25})?,? (please )?(call|phone|email|text)|(call|phone|email|text)( us)?( at [^.]{0,40})? to (order|book|reserve|schedule|make an appointment))\b/i;
+  const sentencesOf = (pg: { text: string }) => pg.text.split(/(?<=[.!?])\s+|\n+/);
+  const bookingHit =
+    pages.map((pg) => ({ pg, sentence: sentencesOf(pg).find((x) => howToBook.test(x) && !negatesBooking.test(x)) })).find((h) => h.sentence) ??
+    pages.map((pg) => ({ pg, sentence: sentencesOf(pg).find((x) => bookingRe.test(x) && !negatesBooking.test(x)) })).find((h) => h.sentence);
   if (!features.onlineBooking && bookingHit?.sentence) {
     out.push({
       id: "phone_only_booking",

@@ -110,27 +110,12 @@ ${buildCorpus(sources)}`,
 }
 
 function heuristicAssessment(crawl: CrawlResult, competitors: Competitor[], signals: FrictionSignal[]): Assessment {
-  const { features, pages, rootUrl, tech } = crawl;
-  const pageFor = (k: FeatureKey) => {
-    const re: Record<FeatureKey, RegExp> = {
-      onlineBooking: /book|appoint|reserv|schedule/i,
-      liveChat: /./,
-      faqPage: /faq|help|question/i,
-      pricingPage: /pric|plan|rate|menu/i,
-      contactForm: /contact/i,
-      reviewsShown: /review|testimonial/i,
-      blog: /blog|news|article/i,
-      socialLinks: /./,
-      emailCapture: /./,
-      ecommerce: /shop|store|product|order/i,
-      careersPage: /career|job|hiring|join/i,
-      mobileReady: /./,
-    };
-    return pages.find((p) => re[k].test(p.url) || re[k].test(p.title))?.url ?? rootUrl;
-  };
+  const { features, pages, rootUrl, tech, featurePages } = crawl;
+  const pageFor = (k: FeatureKey) => featurePages[k] ?? rootUrl;
   const strengths: Claim[] = [];
   const weaknesses: Claim[] = [];
   for (const k of FEATURE_KEYS) {
+    if (k === "mobileReady") continue; // a viewport tag is too weak to call a strength or a gap
     const label = FEATURE_LABELS[k];
     const rivalsWith = competitors.filter((c) => c.features?.[k]).map((c) => c.name);
     if (features[k]) {

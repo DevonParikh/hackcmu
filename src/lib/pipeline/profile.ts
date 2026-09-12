@@ -66,7 +66,7 @@ function heuristicProfile(crawl: CrawlResult, name: string): CompanyProfile {
     ["freelancers", /\bfreelancers?\b/],
     ["parents and children", /\b(kids|children|toddlers|parents)\b/],
   ];
-  for (const [seg, re] of segMap) if (re.test(lower) && !segments.some((x) => x.includes(seg.split(" ")[0]))) segments.push(seg);
+  for (const [seg, re] of segMap) if (re.test(lower) && !segments.some((x) => x.includes(seg.split(" ")[0]) || seg.includes(x))) segments.push(seg);
   if (!segments.length) segments.push("general public");
 
   const monthlyPrices = (lower.match(/\$\s?\d+(\.\d{2})?\s?(\/|per)\s?(month|mo|year|yr|user)\b/g) || []).length;
@@ -119,7 +119,7 @@ function heuristicProfile(crawl: CrawlResult, name: string): CompanyProfile {
   const practical = perK(/\bapp\b|\bsoftware\b|\bdashboard\b|\bsync\b|\bexport\b|\bintegrat|\bpricing\b|\bplans?\b/g);
   // Only label a tone when the wording clearly leans one way; otherwise stay neutral.
   const toneOfVoice =
-    lower.length < 1500 ? "Friendly and straightforward" : formal >= 1 && formal >= casual * 1.5 ? "Professional and reassuring" : casual > 1.5 && casual >= formal * 1.5 ? "Warm and casual" : practical >= 1.5 && practical > formal ? "Direct and practical" : "Friendly and straightforward";
+    lower.length < 1500 ? "Friendly and straightforward" : formal >= 2 && formal >= casual * 1.5 ? "Professional and reassuring" : casual >= 2 && casual >= formal * 1.5 ? "Warm and casual" : practical >= 2 && practical > formal ? "Direct and practical" : "Friendly and straightforward";
   return {
     name,
     tagline: tagline.slice(0, 200),

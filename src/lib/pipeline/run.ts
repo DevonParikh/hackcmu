@@ -2,7 +2,7 @@ import { companies, now, runs, sources } from "../db";
 import { crawlSite } from "../ingest/crawl";
 import { isDemo } from "../llm";
 import type { TemplateContext } from "../templates";
-import type { LogEntry, RunDoc, RunStage, SourceDoc } from "../types";
+import type { CompanySnapshot, LogEntry, RunDoc, RunStage, SourceDoc } from "../types";
 import { assessCompany } from "./assess";
 import { findCompetitors } from "./competitors";
 import { profileCompany } from "./profile";
@@ -69,7 +69,8 @@ export async function executeRun(runId: string): Promise<void> {
     await setStage(runId, "ingest", { status: "running" });
     log(isDemo() ? "Demo mode: no Claude API key set, using deterministic analysis" : "Live mode: using Claude for analysis");
     log(`Reading ${run.url}`);
-    const crawl = await crawlSite(run.url, { maxPages: 25, log: (m) => log(m) });
+    // The raw input decides whether an http fallback is allowed (the owner typed no scheme).
+    const crawl = await crawlSite(run.input.url || run.url, { maxPages: 25, log: (m) => log(m) });
     if (!crawl.pages.length) throw new Error("Could not read any pages from that URL. Check the address or paste content instead.");
     log(`Read ${crawl.pages.length} pages${crawl.skipped ? ` (${crawl.skipped} skipped)` : ""}. Tools detected: ${crawl.tech.join(", ") || "none"}`);
     if (crawl.externalHosts.length) log(`The site links out to: ${crawl.externalHosts.slice(0, 5).join(", ")}`);
@@ -112,6 +113,8 @@ export async function executeRun(runId: string): Promise<void> {
         },
       },
     );
+    const snapshot: CompanySnapshot = { name: profile.name, url: crawl.rootUrl, profile, features: crawl.features, tech: crawl.tech, brand: crawl.brand, contact: crawl.contact, pageCount: crawl.pages.length };
+    await updateRun(runId, { snapshot });
     log(`Profiled ${profile.name}: ${profile.tagline}`);
 
     await setStage(runId, "competitors");

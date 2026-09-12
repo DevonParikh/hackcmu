@@ -232,7 +232,7 @@ export function RunView({ id }: { id: string }) {
         <>
           {/* 4. Where questions go today */}
           <Section title="Where customer questions go today" lede="Every way a customer can reach you, from your own pages, and where each one ends up.">
-            <RouteDiagram channels={impact.channels} after={false} selfTest={null} waitLabel={waitLabel} personLabel={personLabel} />
+            <RouteDiagram channels={impact.channels} after={false} selfTest={null} waitLabel={waitLabel} personLabel={personLabel} selfServe={impact.selfServe.company.features} />
             <p className="mt-2 flex flex-wrap gap-1.5 text-xs" style={{ color: "var(--muted)" }}>
               {impact.channels.map((c) => (
                 <span key={c.id} className="chip">
@@ -308,6 +308,7 @@ export function RunView({ id }: { id: string }) {
                         {c.strengths.slice(0, 3).map((s) => (
                           <li key={s}>+ {s}</li>
                         ))}
+                        {c.notesFrom === "web" && <li style={{ color: "var(--muted)" }}>from web search, not verified against their pages</li>}
                       </ul>
                     )}
                   </div>
@@ -438,7 +439,7 @@ function Section({ title, lede, children }: { title: string; lede?: string; chil
 }
 
 function CostTag({ id }: { id: string }) {
-  const tag = /support|faq|inquir|lead/.test(id) ? "customers wait" : /booking|order/.test(id) ? "no self-serve" : /review/.test(id) ? "unanswered in public" : /hiring/.test(id) ? "paid time" : "your time";
+  const tag = /support|faq|inquir|lead/.test(id) ? "customers wait" : /booking|order/.test(id) ? "no self-serve" : /review/.test(id) ? "reviews off-site" : /hiring/.test(id) ? "paid time" : "your time";
   return <span className="chip">{tag}</span>;
 }
 
@@ -571,7 +572,10 @@ function Recommendations({ run, impact, tools, onBuilt, onBuilding, minutesRange
                 {r && (
                   <ul className="mt-2 grid gap-1 text-xs" style={{ color: "var(--muted)" }}>
                     <li>
-                      <b style={{ color: "var(--ink)" }}>Because:</b> {r.signals ? `${r.signals} sign${r.signals === 1 ? "" : "s"} of this chore from ${r.sources} source${r.sources === 1 ? "" : "s"}` : "no specific evidence; ranked on general fit"}
+                      <b style={{ color: "var(--ink)" }}>Because:</b>{" "}
+                      {r.quotes || r.missing
+                        ? [r.quotes ? `${r.quotes} quote${r.quotes === 1 ? "" : "s"} from your site or from you` : "", r.missing ? `${r.missing} thing${r.missing === 1 ? "" : "s"} missing from the site` : ""].filter(Boolean).join(", ")
+                        : "no specific evidence; ranked on general fit"}
                     </li>
                     <li>
                       <b style={{ color: "var(--ink)" }}>Needs:</b> {r.needs.covered} of {r.needs.total} topics written down{r.needs.missing.length ? ` (missing: ${r.needs.missing.join(", ")})` : ""}
@@ -624,11 +628,18 @@ function Recommendations({ run, impact, tools, onBuilt, onBuilding, minutesRange
             <div className="text-sm">
               <p className="font-semibold">We will test it on</p>
               <ul className="mt-1 grid gap-0.5" style={{ color: "var(--muted)" }}>
-                {ownerQuestions.map((q) => (
-                  <li key={q}>★ {q}</li>
-                ))}
+                {template.mode === "chat" &&
+                  ownerQuestions.map((q) => (
+                    <li key={q}>★ {q}</li>
+                  ))}
                 <li>
-                  {ownerQuestions.length ? `plus ${Math.max(0, 10 - ownerQuestions.length)} questions we write from your site` : "10 questions we write from your site. List your own most-asked questions above for a fairer test."}
+                  {template.mode === "form"
+                    ? template.id === "review_responder"
+                      ? "10 sample reviews written to match your business (your listed questions apply to chat assistants)."
+                      : "10 product facts taken from your site where possible (your listed questions apply to chat assistants)."
+                    : ownerQuestions.length
+                      ? `plus ${Math.max(0, 10 - ownerQuestions.length)} questions we write from your site`
+                      : "10 questions we write from your site. List your own most-asked questions above for a fairer test."}
                 </li>
               </ul>
             </div>
@@ -647,7 +658,7 @@ function Recommendations({ run, impact, tools, onBuilt, onBuilding, minutesRange
       )}
 
       <Section title="What to expect" lede={primaryTool ? "With the assistant in front of your inbox, every route still ends with a person for anything it cannot answer." : "Build and test the assistant to fill this in with measured numbers."}>
-        <RouteDiagram channels={impact.channels} after selfTest={impact.selfTest} inquiriesPerWeek={run.intake?.inquiriesPerWeek} waitLabel={waitLabel} personLabel={personLabel} />
+        <RouteDiagram channels={impact.channels} after selfTest={impact.selfTest} waitLabel={waitLabel} personLabel={personLabel} selfServe={impact.selfServe.company.features} />
         {expectRows.length > 0 ? (
           <div className="mt-4">
             <p className="text-sm font-semibold">
@@ -661,7 +672,7 @@ function Recommendations({ run, impact, tools, onBuilt, onBuilding, minutesRange
             )}
             {impact.value && (
               <p className="mt-2 text-sm">
-                Worth about ${impact.value.low}–${impact.value.high} a week at the hourly value you entered <Badge kind="you" /> <Badge kind="estimate" />. Time you could spend on something else, not new revenue.
+                {impact.value.kind === "range" ? `Worth about $${impact.value.low}–$${impact.value.high} a week` : `Worth up to $${impact.value.high} a week`} at the hourly value you entered <Badge kind="you" /> <Badge kind="estimate" />. Time you could spend on something else, not new revenue.
               </p>
             )}
           </div>

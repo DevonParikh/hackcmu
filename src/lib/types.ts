@@ -57,7 +57,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   socialLinks: "Social media links",
   emailCapture: "Newsletter signup",
   ecommerce: "Online ordering or shop",
-  careersPage: "Careers page",
+  careersPage: "Careers or hiring page",
   mobileReady: "Works on phones",
 };
 export type FeatureChecklist = Record<FeatureKey, boolean>;
@@ -73,6 +73,8 @@ export const CompetitorSchema = z.object({
 export type Competitor = z.infer<typeof CompetitorSchema> & {
   features?: FeatureChecklist;
   tech?: string[];
+  /** "detected" when strengths come from the crawl; "web" when they are model text from web search, unverified. */
+  notesFrom?: "detected" | "web";
 };
 
 const ClaimSchema = z.object({
@@ -218,12 +220,25 @@ export interface CompanyDoc {
   updatedAt: string;
 }
 
+/** What a run learned about the company, frozen so later runs cannot change an old report or its tools. */
+export interface CompanySnapshot {
+  name: string;
+  url: string;
+  profile: CompanyProfile | null;
+  features: FeatureChecklist | null;
+  tech: string[];
+  brand: Brand;
+  contact: Contact;
+  pageCount: number;
+}
+
 export interface RunDoc {
   _id: string;
   companyId: string;
   url: string;
   input: AnalyzeInput;
   intake: Intake;
+  snapshot?: CompanySnapshot;
   mode: "live" | "demo";
   status: "queued" | "running" | "done" | "failed";
   stage: RunStage;

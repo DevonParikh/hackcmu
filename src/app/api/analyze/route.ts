@@ -39,7 +39,17 @@ export const POST = withApi(async (req: Request) => {
   if (!hasAccessFromRequest(req)) return NextResponse.json({ error: "Access key required." }, { status: 401 });
   const { raw, files } = await readInput(req);
   const body = AnalyzeInputSchema.safeParse(raw);
-  if (!body.success) return NextResponse.json({ error: "Enter a website URL to get started." }, { status: 400 });
+  if (!body.success) {
+    const path = String(body.error.issues[0]?.path?.[0] ?? "url");
+    const messages: Record<string, string> = {
+      url: "Enter a website URL to get started.",
+      name: "The business name is too long (120 characters at most).",
+      competitors: "List at most five competitor websites.",
+      pain: "Keep the description of what takes time under 500 characters.",
+      notes: "Notes are limited to 100,000 characters; upload a file instead.",
+    };
+    return NextResponse.json({ error: messages[path] ?? "Please check the form and try again." }, { status: 400 });
+  }
   if (files.length > MAX_FILES) return NextResponse.json({ error: `Upload at most ${MAX_FILES} files.` }, { status: 400 });
   let url: string;
   try {
@@ -60,7 +70,7 @@ export const POST = withApi(async (req: Request) => {
   }
   if (body.data.notes.trim()) docs.push({ title: "Notes you added", text: body.data.notes.trim().slice(0, 100_000) });
 
-  const host = new URL(url).host;
+  const host = new URL(url).host.toLowerCase().replace(/^www\./, "");
   const t = now();
   const compCol = await companies();
   const fresh: CompanyDoc = {

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { AccessGate } from "@/components/AccessGate";
 import { ToolView } from "@/components/ToolView";
+import { accessRequired, hasAccess } from "@/lib/access";
 import { tools } from "@/lib/db";
 import { publicTool } from "@/lib/publicTool";
 import type { ToolDoc } from "@/lib/types";
@@ -36,5 +38,8 @@ export default async function ToolPage({ params, searchParams }: { params: Promi
     );
   }
   if (!tool) notFound();
-  return <ToolView tool={publicTool(tool)} embed={embed === "1"} />;
+  const owner = await hasAccess();
+  // Staff assistants are for the team: when an access key is configured, they need it.
+  if (tool.templateId === "staff_assistant" && accessRequired() && !owner) return <AccessGate />;
+  return <ToolView tool={publicTool(tool)} embed={embed === "1"} reportHref={owner ? `/runs/${tool.runId}` : null} />;
 }

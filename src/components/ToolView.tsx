@@ -14,7 +14,7 @@ function textOn(hex: string): string {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? "#111111" : "#ffffff";
 }
 
-export function ToolView({ tool, embed }: { tool: PublicTool; embed: boolean }) {
+export function ToolView({ tool, embed, reportHref }: { tool: PublicTool; embed: boolean; reportHref: string | null }) {
   const [messages, setMessages] = useState<Msg[]>([{ role: "assistant", content: tool.greeting }]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -70,9 +70,9 @@ export function ToolView({ tool, embed }: { tool: PublicTool; embed: boolean }) 
   const showSuggestions = messages.length <= 1 && tool.suggestedQuestions.length > 0;
   return (
     <main className={embed ? "flex h-screen flex-col" : "mx-auto flex max-w-2xl flex-col px-5 py-6"}>
-      {!embed && (
+      {!embed && reportHref && (
         <div className="mb-3 flex items-center justify-between text-sm">
-          <Link href={`/runs/${tool.runId}`} style={{ color: "var(--accent)" }}>
+          <Link href={reportHref} style={{ color: "var(--accent)" }}>
             ← Back to the report
           </Link>
           {tool.demo && (

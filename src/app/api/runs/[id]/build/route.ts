@@ -4,6 +4,7 @@ import { withApi } from "@/lib/api";
 import { companies, runs, sources, tools } from "@/lib/db";
 import { buildTool } from "@/lib/pipeline/build";
 import { appendLog, pushToolId } from "@/lib/pipeline/run";
+import { companyForRun } from "@/lib/runCompany";
 import { getTemplate } from "@/lib/templates";
 import { BuildInputSchema } from "@/lib/types";
 
@@ -20,8 +21,8 @@ export const POST = withApi(async (req: Request, ctx: { params: Promise<{ id: st
   const run = await runCol.findOne({ _id: id });
   if (!run) return NextResponse.json({ error: "Run not found" }, { status: 404 });
   if (run.status !== "done") return NextResponse.json({ error: "Analysis is not finished yet" }, { status: 409 });
-  const company = await (await companies()).findOne({ _id: run.companyId });
-  if (!company) return NextResponse.json({ error: "Company not found" }, { status: 404 });
+  const company = companyForRun(run, await (await companies()).findOne({ _id: run.companyId }));
+  if (!company) return NextResponse.json({ error: "We couldn't find the business record for this analysis." }, { status: 404 });
   const srcs = await (await sources()).find({ runId: id }).toArray();
   try {
     const tool = await buildTool({
@@ -32,7 +33,7 @@ export const POST = withApi(async (req: Request, ctx: { params: Promise<{ id: st
       name: body.data.name,
       tone: body.data.tone,
       offLimits: body.data.offLimits.map((s) => s.trim()).filter(Boolean),
-      log: (m) => void appendLog(id, m),
+      log: (m) => void appendLog(id, m).catch((e) => console.error("log write failed", e)),
     });
     await (await tools()).insertOne(tool);
     await pushToolId(id, tool._id);

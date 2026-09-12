@@ -17,8 +17,8 @@ export function publicTool(tool: ToolDoc) {
     escalation: tool.config.escalation,
     evalSummary: tool.evalSummary,
     suggestedQuestions: tool.config.suggestedQuestions ?? [],
-    runId: tool.runId,
     demo: isDemo(),
+    staffOnly: tool.templateId === "staff_assistant",
   };
 }
 export type PublicTool = ReturnType<typeof publicTool>;

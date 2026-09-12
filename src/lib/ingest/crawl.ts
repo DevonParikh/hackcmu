@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import type { Brand, Contact, FeatureChecklist, FeatureKey } from "../types";
+import { FEATURE_KEYS, type Brand, type Contact, type FeatureChecklist, type FeatureKey } from "../types";
 
 export interface CrawledPage {
   url: string;
@@ -24,6 +24,8 @@ export interface CrawlResult {
   brand: Brand;
   contact: Contact;
   features: FeatureChecklist;
+  /** The page each detected feature was found on, for honest evidence links. */
+  featurePages: Partial<Record<FeatureKey, string>>;
   rootUrl: string;
   /** Hosts the site links or redirects out to (ordering platforms, booking vendors). */
   externalHosts: string[];
@@ -237,6 +239,7 @@ export async function crawlSite(inputUrl: string, opts: { maxPages?: number; log
   const maxPages = opts.maxPages ?? 25;
   const log = opts.log ?? (() => {});
   let rootUrl = normalizeUrl(inputUrl);
+  const inputPath = new URL(rootUrl).pathname;
   const hosts = new Set<string>([bareHost(new URL(rootUrl).host)]);
   const seen = new Set<string>([canonicalKey(new URL(rootUrl))]);
   const queue: string[] = [rootUrl];
@@ -268,10 +271,13 @@ export async function crawlSite(inputUrl: string, opts: { maxPages?: number; log
       const { status, body, finalUrl, contentType } = await fetchRaw(url, HTML_TYPES);
       const fu = new URL(finalUrl);
       if (pages.length === 0 && !rootDone) {
-        // The site may redirect (http->https, apex->www, or a new domain). Follow it as the canonical root.
+        // The site may redirect (http->https, apex->www, or a new domain). Follow it as the canonical root,
+        // but only once a page is actually read; a 404 on a deep link must not settle the root.
         hosts.add(bareHost(fu.host));
-        rootUrl = new URL("/", finalUrl).toString();
-        rootDone = true;
+        if (status < 400 && body !== null) {
+          rootUrl = new URL("/", finalUrl).toString();
+          rootDone = true;
+        }
       } else if (!hosts.has(bareHost(fu.host))) {
         externalHosts.add(bareHost(fu.host));
         log(`${url} sends visitors to ${fu.host}; not counted as part of the site`);
@@ -329,11 +335,18 @@ export async function crawlSite(inputUrl: string, opts: { maxPages?: number; log
     seen.add(canonicalKey(new URL(httpUrl)));
     await visit(httpUrl);
   }
-  if (!pages.length && new URL(rootUrl).pathname !== "/") {
+  if (!pages.length && inputPath !== "/") {
     const home = new URL("/", rootUrl).toString();
     log("That page was not readable; starting from the home page instead");
     seen.add(canonicalKey(new URL(home)));
     await visit(home);
+    if (!pages.length && !typedScheme && home.startsWith("https://")) {
+      const httpHome = home.replace(/^https:/, "http:");
+      log("Trying the home page over http instead of https");
+      rootUrl = httpHome;
+      seen.add(canonicalKey(new URL(httpHome)));
+      await visit(httpHome);
+    }
   }
   await new Promise<void>((resolve) => {
     const pump = () => {
@@ -356,8 +369,8 @@ export async function crawlSite(inputUrl: string, opts: { maxPages?: number; log
   const tech = detectTech(pages);
   const brand = await detectBrand(pages, rootUrl);
   const contact = detectContact(pages, rootUrl);
-  const features = detectFeatures(pages, tech);
-  return { pages, tech, brand, contact, features, rootUrl, externalHosts: [...externalHosts], skipped };
+  const { features, featurePages } = detectFeatures(pages, tech);
+  return { pages, tech, brand, contact, features, featurePages, rootUrl, externalHosts: [...externalHosts], skipped };
 }
 
 // ---------- Tech stack ----------
@@ -605,18 +618,19 @@ function segments(p: CrawledPage): string[] {
 }
 const SOCIAL_HOSTS = new Set(["instagram.com", "facebook.com", "tiktok.com", "linkedin.com", "twitter.com", "x.com", "youtube.com", "pinterest.com", "threads.net"]);
 
-function detectFeatures(pages: CrawledPage[], tech: string[]): FeatureChecklist {
-  const text = pages.map((p) => p.fullText).join("\n");
-  const lower = text.toLowerCase();
-  const segHas = (re: RegExp) => pages.some((p) => segments(p).some((s) => re.test(s)));
-  const titleHas = (re: RegExp) => pages.some((p) => re.test(p.title));
+function detectFeatures(pages: CrawledPage[], tech: string[]): { features: FeatureChecklist; featurePages: Partial<Record<FeatureKey, string>> } {
+  const where: Partial<Record<FeatureKey, string>> = {};
+  const mark = (k: FeatureKey, url: string) => {
+    if (!where[k]) where[k] = url;
+  };
   const hasTech = (re: RegExp) => tech.some((t) => re.test(t));
+  const pageWhere = (test: (p: CrawledPage) => boolean): string | null => pages.find(test)?.url ?? null;
+  const segTest = (p: CrawledPage, re: RegExp) => segments(p).some((seg) => re.test(seg));
+  const home = pages[0]?.url ?? "";
 
-  let contactForm = false, emailCapture = false, reviewsShown = false, socialLinks = false, mobileReady = false;
-  let starGlyphs = 0;
   for (const p of pages) {
     const $ = cheerio.load(p.html);
-    if ($('meta[name="viewport" i]').length) mobileReady = true;
+    if ($('meta[name="viewport" i]').length) mark("mobileReady", p.url);
     $("form").each((_, form) => {
       const $f = $(form);
       const attrs = `${$f.attr("role") || ""} ${$f.attr("action") || ""} ${$f.attr("class") || ""} ${$f.attr("id") || ""}`.toLowerCase();
@@ -629,59 +643,72 @@ function detectFeatures(pages: CrawledPage[], tech: string[]): FeatureChecklist 
         .get()
         .join(" ")
         .toLowerCase();
+      const formText = `${$f.text()} ${attrs} ${$f.find("button, input[type=submit]").map((_, b) => `${$(b).text()} ${$(b).attr("value") || ""}`).get().join(" ")}`.toLowerCase();
       const contactish = /message|enquir|inquir|comment|question|phone|name/.test(fieldNames);
-      if (hasTextarea || hasTel || (hasEmail && contactish)) contactForm = true;
-      else if (hasEmail && !hasTextarea) emailCapture = true;
+      if (hasTextarea || hasTel || (hasEmail && contactish)) mark("contactForm", p.url);
+      else if (hasEmail && !hasTextarea && /newsletter|subscribe|updates|mailing list|sign up for (our )?(news|emails)/.test(formText)) mark("emailCapture", p.url);
     });
     $('[class*="review" i], [class*="testimonial" i], [id*="review" i], [id*="testimonial" i]').each((_, el) => {
       if ($(el).is("a")) return;
-      if ($(el).text().replace(/\s+/g, " ").trim().length >= 40) reviewsShown = true;
+      if ($(el).text().replace(/\s+/g, " ").trim().length >= 40) mark("reviewsShown", p.url);
     });
     $('script[type="application/ld+json"]').each((_, el) => {
-      if (/"@type"\s*:\s*"(Review|AggregateRating)"/.test($(el).text())) reviewsShown = true;
+      if (/"@type"\s*:\s*"(Review|AggregateRating)"/.test($(el).text())) mark("reviewsShown", p.url);
     });
     $("a[href]").each((_, el) => {
       try {
         const u = new URL($(el).attr("href")!, p.url);
         const h = bareHost(u.host);
-        if (SOCIAL_HOSTS.has(h) && !(h === "facebook.com" && u.pathname.startsWith("/tr"))) socialLinks = true;
+        if (SOCIAL_HOSTS.has(h) && !(h === "facebook.com" && u.pathname.startsWith("/tr"))) mark("socialLinks", p.url);
       } catch {
         /* ignore */
       }
     });
-    starGlyphs += (p.fullText.match(/★|⭐/g) || []).length;
+    const stars = (p.fullText.match(/★|⭐/g) || []).length;
+    const quoted = /["“][^"”]{15,}["”]/.test(p.fullText);
+    if ((stars >= 3 && quoted) || (/\b(what (our )?(customers|clients|patients|guests) say|customer reviews|testimonials)\b/i.test(p.fullText) && quoted)) mark("reviewsShown", p.url);
   }
-  if (starGlyphs >= 3 && /["“][^"”]{15,}["”]/.test(text)) reviewsShown = true;
-  if (/\b(what (our )?(customers|clients|patients|guests) say|customer reviews|testimonials)\b/i.test(text) && /["“][^"”]{15,}["”]/.test(text)) reviewsShown = true;
-  if (hasTech(/Mailchimp|Klaviyo/)) emailCapture = true;
+  if (hasTech(/Mailchimp|Klaviyo/)) mark("emailCapture", home);
 
-  const pricePage = pages.some((p) => {
-    const named = segments(p).some((s) => /^(pricing|prices|price-list|rates|menu|plans|fees|tarifs|precios|preise)$/.test(s)) || /\b(pricing|prices|rates|menu|plans|fees)\b/i.test(p.title);
+  const pricePage = pageWhere((p) => {
+    const named = segTest(p, /^(pricing|prices|price-list|rates|menu|plans|fees|tarifs|precios|preise)$/) || /\b(pricing|prices|rates|menu|plans|fees)\b/i.test(p.title);
     const tokens = new Set(p.fullText.match(/\$\s?\d{1,5}(?:,\d{3})?(?:\.\d{2})?/g) || []);
     return named || (tokens.size >= 3 && /\b(per|from|starting at|package|each|month)\b/i.test(p.fullText));
   });
+  if (pricePage) mark("pricingPage", pricePage);
 
-  const f: Record<FeatureKey, boolean> = {
-    onlineBooking:
-      hasTech(/Calendly|Acuity|Mindbody|Square Appointments|Booksy|Vagaro|Fresha|Zocdoc|OpenTable|Resy|Tock|Toast/) ||
-      segHas(/^(book|booking|bookings|book-now|book-online|appointments?|reserve|reservations?|schedule|schedule-online|reservar|reservation)$/) ||
-      /\b(book (online|now|an appointment|a table|your (appointment|table|visit))|reserve (online|a table|now|your table)|schedule online)\b/.test(lower),
-    liveChat: hasTech(/Intercom|Drift|Crisp|Tawk|Tidio|LiveChat|Olark|Freshchat|Zendesk|HubSpot Chat/) || /live ?chat|chat with us/.test(lower),
-    faqPage: segHas(/^(faq|faqs|help-center|helpcenter|questions|preguntas-frecuentes|questions-frequentes|haeufige-fragen|faq-s)$/) || titleHas(/\bfaqs?\b|frequently asked|preguntas frecuentes|questions fréquentes|häufige fragen/i) || /frequently asked questions/.test(lower),
-    pricingPage: pricePage,
-    contactForm,
-    reviewsShown,
-    blog: segHas(/^(blog|news|articles|journal|posts|insights|stories)$/),
-    socialLinks,
-    emailCapture,
-    ecommerce:
-      hasTech(/Shopify|WooCommerce|BigCommerce|Toast/) ||
-      segHas(/^(cart|checkout|collections|products|order-online|store)$/) ||
-      /\b(add to cart|buy now|order online|checkout)\b/.test(lower),
-    careersPage: segHas(/^(careers?|jobs?|hiring|join-us|join-our-team|vacancies|employment|work-with-us)$/) || /\b(we'?re hiring|now hiring|join our team|open (role|position)s?)\b/.test(lower),
-    mobileReady,
-  };
-  return f;
+  const bookingPage =
+    (hasTech(/Calendly|Acuity|Mindbody|Square Appointments|Booksy|Vagaro|Fresha|Zocdoc|OpenTable|Resy|Tock|Toast/) ? home : null) ??
+    pageWhere((p) => segTest(p, /^(book|booking|bookings|book-now|book-online|appointments?|reserve|reservations?|schedule|schedule-online|reservar|reservation)$/)) ??
+    pageWhere((p) => /\b(book (online|now|an appointment|a table|your (appointment|table|visit))|reserve (online|a table|now|your table)|schedule online)\b/i.test(p.fullText));
+  if (bookingPage) mark("onlineBooking", bookingPage);
+
+  const chatPage = (hasTech(/Intercom|Drift|Crisp|Tawk|Tidio|LiveChat|Olark|Freshchat|Zendesk|HubSpot Chat/) ? home : null) ?? pageWhere((p) => /live ?chat|chat with us/i.test(p.fullText));
+  if (chatPage) mark("liveChat", chatPage);
+
+  // FAQ pages, help centers, and documentation all let a customer find answers alone.
+  const faqPage =
+    pageWhere((p) => segTest(p, /^(faq|faqs|faq-s|help|help-center|helpcenter|helpcentre|docs|documentation|support|knowledge-base|kb|questions|preguntas-frecuentes|questions-frequentes|haeufige-fragen)$/)) ??
+    pageWhere((p) => /\bfaqs?\b|frequently asked|help cent(er|re)|knowledge base|preguntas frecuentes|questions fréquentes|häufige fragen/i.test(p.title)) ??
+    pageWhere((p) => /frequently asked questions/i.test(p.fullText));
+  if (faqPage) mark("faqPage", faqPage);
+
+  const blogPage = pageWhere((p) => segTest(p, /^(blog|news|articles|journal|posts|insights|stories)$/));
+  if (blogPage) mark("blog", blogPage);
+
+  const shopPage =
+    (hasTech(/Shopify|WooCommerce|BigCommerce|Toast/) ? home : null) ??
+    pageWhere((p) => segTest(p, /^(cart|checkout|collections|products|order-online|store)$/)) ??
+    pageWhere((p) => /\b(add to cart|buy now|order online|checkout)\b/i.test(p.fullText));
+  if (shopPage) mark("ecommerce", shopPage);
+
+  const careersPage =
+    pageWhere((p) => segTest(p, /^(careers?|jobs?|hiring|join-us|join-our-team|vacancies|employment|work-with-us)$/)) ??
+    pageWhere((p) => /\b(we'?re hiring|now hiring|join our team|open (role|position)s?)\b/i.test(p.fullText));
+  if (careersPage) mark("careersPage", careersPage);
+
+  const features = Object.fromEntries(FEATURE_KEYS.map((k) => [k, !!where[k]])) as FeatureChecklist;
+  return { features, featurePages: where };
 }
 
 /** Pages that look like job postings or a careers page. */

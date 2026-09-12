@@ -44,6 +44,7 @@ export function IntakePanel({ runId, intake, sources, showItems, onSaved }: { ru
   const [items, setItems] = useState(intake.itemsPerMonth?.toString() ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [inputKey, setInputKey] = useState(0);
   const uploaded = sources.filter((s) => s.kind === "user");
 
   async function save(e: React.FormEvent) {
@@ -69,6 +70,7 @@ export function IntakePanel({ runId, intake, sources, showItems, onSaved }: { ru
       if (!res.ok) throw new Error(data.error || "Could not save");
       setFiles([]);
       setNotes("");
+      setInputKey((k) => k + 1);
       setMsg({ kind: "ok", text: data.documents ? `Saved. ${data.documents} document${data.documents === 1 ? "" : "s"} added; the report below has been updated.` : "Saved. The report below has been updated." });
       await onSaved();
     } catch (err) {
@@ -96,6 +98,7 @@ export function IntakePanel({ runId, intake, sources, showItems, onSaved }: { ru
             Menu, price list, policies, FAQ, or staff instructions. PDF or text, up to 10 MB each.
           </p>
           <input
+            key={inputKey}
             id="intake-files"
             type="file"
             multiple
@@ -190,7 +193,7 @@ export function IntakePanel({ runId, intake, sources, showItems, onSaved }: { ru
         <label className="grid gap-1 text-sm">
           <span className="font-semibold">What an hour of that time is worth ($, optional)</span>
           <span className="text-xs" style={{ color: "var(--muted)" }}>
-            Leave blank to see hours only, never dollars.
+            Leave blank to see hours only, never dollars. For booking and inquiry tools you get an &ldquo;up to&rdquo; figure, because you still reply.
           </span>
           <input id="intake-hour" className="input" inputMode="numeric" placeholder="e.g. 30" value={hourValue} onChange={(e) => setHourValue(e.target.value.replace(/[^\d]/g, ""))} />
         </label>

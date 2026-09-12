@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { UsageBars } from "@/components/charts";
 
-type Usage = { conversations: number; replies: number; answered: number; handedOff: number; mode: "chat" | "form"; perDay: { day: string; answered: number; handedOff: number }[] };
+type Usage = { conversations: number; replies: number; answered: number; handedOff: number; questionsAnswered: number; mode: "chat" | "form"; perDay: { day: string; answered: number; handedOff: number }[] };
 
 export function UsagePanel({ slug, minutesRange }: { slug: string; minutesRange: [number, number] | null }) {
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -47,8 +47,8 @@ export function UsagePanel({ slug, minutesRange }: { slug: string; minutesRange:
         Nothing measured yet. Once people use it, this panel counts real conversations and replaces the estimate above.
       </p>
     );
-  const savedLow = minutesRange ? Math.round(((usage.answered * minutesRange[0]) / 60) * 100) / 100 : null;
-  const savedHigh = minutesRange ? Math.round(((usage.answered * minutesRange[1]) / 60) * 100) / 100 : null;
+  const savedLow = minutesRange ? Math.round(((usage.questionsAnswered * minutesRange[0]) / 60) * 100) / 100 : null;
+  const savedHigh = minutesRange ? Math.round(((usage.questionsAnswered * minutesRange[1]) / 60) * 100) / 100 : null;
   return (
     <div className="grid gap-3">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -62,7 +62,7 @@ export function UsagePanel({ slug, minutesRange }: { slug: string; minutesRange:
         {usage.replies >= 20
           ? `${Math.round((usage.answered / usage.replies) * 100)}% answered without a hand-off so far.`
           : "Too few replies to read as a trend yet."}{" "}
-        {savedLow !== null && savedHigh !== null ? `Time not spent replying so far: about ${savedLow}–${savedHigh} hours, using your minutes-per-question answer.` : ""} &ldquo;Answered&rdquo; means the assistant did not hand off; read a few transcripts to check quality.
+        {savedLow !== null && savedHigh !== null && usage.questionsAnswered > 0 ? `Estimate: ${usage.questionsAnswered} question${usage.questionsAnswered === 1 ? "" : "s"} answered without a hand-off × your minutes-per-question answer = about ${savedLow}–${savedHigh} hours not spent replying.` : ""} &ldquo;Answered&rdquo; means the assistant did not hand off; read a few transcripts to check quality.
       </p>
     </div>
   );
