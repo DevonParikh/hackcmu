@@ -64,6 +64,22 @@ export async function conversations(): Promise<Collection<ConversationDoc>> {
   return (await getDb()).collection<ConversationDoc>("conversations");
 }
 
+/** Demo and consultation requests from the landing page. */
+export type LeadDoc = {
+  _id: string;
+  kind: "demo" | "consult";
+  name: string;
+  email: string;
+  company: string;
+  website: string;
+  message: string;
+  preferredTime: string;
+  createdAt: string;
+};
+export async function leads(): Promise<Collection<LeadDoc>> {
+  return (await getDb()).collection<LeadDoc>("leads");
+}
+
 export function now(): string {
   return new Date().toISOString();
 }
