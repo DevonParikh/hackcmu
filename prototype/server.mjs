@@ -10,7 +10,7 @@
 
 import express from "express";
 import { randomUUID } from "node:crypto";
-import { prepare, execute, audit, readLog, getState, TOKEN, oneLine } from "./core.mjs";
+import { prepare, execute, audit, readLog, getState, TOKEN, oneLine } from "../money/core.mjs";
 
 const app = express();
 app.use(express.json());
@@ -20,7 +20,7 @@ app.use((req, res, next) => {                       // permissive CORS: page on 
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
-app.use(express.static("public"));
+app.use(express.static(new URL("./public", import.meta.url).pathname));
 
 const pending = new Map();                          // id → prepared intent, awaiting a human
 

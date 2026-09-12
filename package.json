@@ -1,20 +1,35 @@
 {
-  "name": "hackcmu",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "tailor",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "proto": "node prototype/server.mjs",
+    "reset": "node money/reset.mjs",
+    "floor": "node money/floor.mjs",
+    "agent": "node money/agent.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
+    "cheerio": "^1.2.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "mongodb": "^7.6.0"
+    "mongodb": "^7.6.0",
+    "next": "^16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "recharts": "^3.10.1",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "^8",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
   }
 }
