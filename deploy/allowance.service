@@ -1,0 +1,19 @@
+# deploy/allowance.service — the voice agent (prototype/server.mjs) as a systemd service on the Vultr box.
+[Unit]
+Description=Allowance: a payment agent the network can say no to
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/hackcmu
+EnvironmentFile=/opt/hackcmu/.env
+Environment=PORT=3000
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node prototype/server.mjs
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target
