@@ -282,7 +282,7 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
     today = { low: lo, high: hi, label: BUCKET_LABELS.reply[intake.replyTime], source: "you", quote: null, url: null };
   } else {
     for (const s of siteSources) {
-      const m = s.text.match(/(?:reply|respond|get back to you|answer)[^.\n]{0,40}?within (\d+|one|two|three|a|an) (business day|business days|hour|hours|day|days)/i);
+      const m = s.text.match(/(?:reply|respond|get back to you|answer)[^.\n]{0,40}?within (\d+|one|two|three|a|an) (business days?|hours?|days?)/i);
       if (m) {
         const nWord = m[1].toLowerCase();
         const n = { one: 1, a: 1, an: 1, two: 2, three: 3 }[nWord] ?? Number(nWord);

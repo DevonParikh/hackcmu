@@ -1,7 +1,29 @@
 import type { CrawlResult } from "../ingest/crawl";
 import { isDemo, structured } from "../llm";
 import type { Assessment, Claim, Competitor, FrictionSignal, SourceDoc, FeatureKey } from "../types";
-import { AssessmentSchema, FEATURE_LABELS, FEATURE_KEYS } from "../types";
+import { z } from "zod";
+import { FEATURE_LABELS, FEATURE_KEYS } from "../types";
+
+// What Claude may return: quotes only. The "observed" flag is reserved for our own deterministic checks,
+// so a model cannot mark its own claims as verified observations.
+const LlmEvidenceSchema = z.object({
+  quote: z.string().describe("Short verbatim quote copied from the source page"),
+  sourceUrl: z.string().describe("URL of the page the quote appears on"),
+});
+const LlmClaimSchema = z.object({ claim: z.string(), evidence: z.array(LlmEvidenceSchema).min(1) });
+const LlmAssessmentSchema = z.object({
+  strengths: z.array(LlmClaimSchema),
+  weaknesses: z.array(LlmClaimSchema),
+  frictionSignals: z.array(
+    z.object({
+      id: z.string().describe("snake_case identifier, e.g. support_by_email_only"),
+      task: z.string().describe("The repetitive chore"),
+      who: z.string().describe("Who does it today"),
+      frequency: z.string().describe("How often, only if the site says so; otherwise 'not stated'"),
+      evidence: z.array(LlmEvidenceSchema).min(1),
+    }),
+  ),
+});
 import { buildCorpus } from "./corpus";
 
 const EXPECTED: FeatureKey[] = ["contactForm", "faqPage", "mobileReady", "reviewsShown", "socialLinks"];
@@ -31,7 +53,7 @@ export async function assessCompany(opts: {
   );
   const known = (u: string) => knownUrls.has(canon(u));
   const llm = await structured({
-    schema: AssessmentSchema,
+    schema: LlmAssessmentSchema,
     effort: "high",
     system: `You assess a company for an owner who wants to know, plainly, what is working and what is not. Every claim needs at least one piece of evidence: a short verbatim quote or a concrete observation, with the URL it came from. Use only URLs that appear in the sources. Drop anything you cannot evidence. Friction signals are repetitive chores that cost staff time; include the deterministic ones you are given if the evidence supports them and add others you find (unanswered reviews, hiring for repetitive roles, manual processes described on the site).`,
     user: `Company: ${companyName} (${crawl.rootUrl})

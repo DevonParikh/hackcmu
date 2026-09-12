@@ -61,6 +61,13 @@ BASE=http://127.0.0.1:3000 SITE=https://your-test-site.example RIVAL=https://riv
 
 The checks assume the fixture bakery site used during development (hours, cake policy, contact details); point `SITE` at a copy of it or adapt the assertions for another site. For local fixtures on `127.0.0.1`, set `TAILOR_ALLOW_PRIVATE_URLS=1`.
 
+To exercise the live-mode code paths without an API key, `scripts/mock-anthropic.mjs` stands in for the Messages API and answers structured-output, tool, and text requests with schema-valid placeholders (it proves the plumbing, not the quality):
+
+```bash
+node scripts/mock-anthropic.mjs &
+ANTHROPIC_API_KEY=test ANTHROPIC_BASE_URL=http://127.0.0.1:3999 MONGODB_URI=mongodb://127.0.0.1:27017/tailor_mock npm start
+```
+
 ## Honesty rules the report follows
 
 - No statistic that does not come from the crawl, an uploaded file, the owner's inputs, the self-test, or logged conversations. No industry benchmarks.
