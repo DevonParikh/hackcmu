@@ -50,28 +50,34 @@ export function StartForm() {
   }
 
   return (
-    <form onSubmit={submit} className="panel grid gap-4 p-5">
-      <label className="grid gap-1">
-        <span className="text-sm font-semibold">Your website</span>
-        <input id="url" className="input" required placeholder="example.com" inputMode="url" autoComplete="url" autoFocus value={url} onChange={(e) => setUrl(e.target.value)} />
+    <form onSubmit={submit} className="card grid gap-4 p-5 md:p-6">
+      <div>
+        <h2 className="text-lg font-bold tracking-tight">Analyze your business</h2>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Start with your website. Everything else is optional.
+        </p>
+      </div>
+      <label className="field">
+        <span>Your website</span>
+        <input id="url" className="input" required placeholder="example.com" inputMode="url" autoComplete="url" value={url} onChange={(e) => setUrl(e.target.value)} />
       </label>
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-1">
-          <span className="text-sm font-semibold">
-            Business name <span style={{ color: "var(--muted)" }}>(optional)</span>
+        <label className="field">
+          <span>
+            Business name <em>(optional)</em>
           </span>
           <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        <label className="grid gap-1">
-          <span className="text-sm font-semibold">
-            Competitors&apos; websites <span style={{ color: "var(--muted)" }}>(optional)</span>
+        <label className="field">
+          <span>
+            Competitors&apos; websites <em>(optional)</em>
           </span>
           <input id="competitors" className="input" placeholder="rival.com, another.com" value={competitors} onChange={(e) => setCompetitors(e.target.value)} />
         </label>
       </div>
-      <label className="grid gap-1">
-        <span className="text-sm font-semibold">
-          What takes up the most time right now? <span style={{ color: "var(--muted)" }}>(optional)</span>
+      <label className="field">
+        <span>
+          What takes up the most time right now? <em>(optional)</em>
         </span>
         <textarea id="pain" className="input" rows={2} placeholder="e.g. answering the same emails about hours and pricing" value={pain} onChange={(e) => setPain(e.target.value)} />
       </label>
@@ -96,7 +102,7 @@ export function StartForm() {
         </p>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <button className="btn" type="submit" disabled={busy}>
+        <button className="btn btn-lg" type="submit" disabled={busy}>
           {busy ? "Starting…" : "Analyze my business"}
         </button>
         <span className="text-xs" style={{ color: "var(--muted)" }}>
