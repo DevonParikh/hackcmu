@@ -93,7 +93,7 @@ export function RouteDiagram({ channels, after, selfTest, inquiriesPerWeek, wait
   const answered = selfTest ? selfTest.answered : null;
   const total = selfTest ? selfTest.total : null;
   const counts = inquiriesPerWeek && answered !== null && total ? { yes: Math.round((inquiriesPerWeek * answered) / total), no: inquiriesPerWeek - Math.round((inquiriesPerWeek * answered) / total) } : null;
-  const customerSub = answered !== null ? (counts ? `answered from your pages, about ${counts.yes} a week` : `answered from your pages, ${answered} of ${total} in the test`) : "answered from your pages (build to measure)";
+  const customerSub = answered !== null ? (counts ? `answered from your pages in seconds, about ${counts.yes} a week, any hour` : `answered from your pages in seconds, ${answered} of ${total} in the test, any hour`) : "answered from your pages in seconds, any hour (build to measure)";
   const personSub = after
     ? answered !== null
       ? counts
@@ -112,7 +112,7 @@ export function RouteDiagram({ channels, after, selfTest, inquiriesPerWeek, wait
   const custY = after ? Math.max(6, (h - 26) / 2 - rightH / 2) : 0;
   const personY = after ? custY + endH + endGap : Math.max(6, chanMid - endH / 2);
   const targetY = after ? chanMid : personY + endH / 2;
-  const wrap = (t: string, max = 34): string[] => {
+  const wrap = (t: string, max = 38): string[] => {
     const words = t.split(" ");
     const lines: string[] = [];
     let cur = "";
@@ -173,7 +173,7 @@ export function RouteDiagram({ channels, after, selfTest, inquiriesPerWeek, wait
             </text>
             <line x1={midX + boxW} y1={chanMid - 4} x2={rightX - 4} y2={custY + endH / 2} stroke={C.series} strokeWidth="2" markerEnd="url(#arrow-teal)" />
             <line x1={midX + boxW} y1={chanMid + 6} x2={rightX - 4} y2={personY + endH / 2} stroke={C.axis} strokeWidth="1.5" strokeDasharray="4 3" markerEnd="url(#arrow)" />
-            <EndBox x={rightX} y={custY} title="A customer, in seconds, any hour" sub={customerSub} strong />
+            <EndBox x={rightX} y={custY} title="A customer" sub={customerSub} strong />
             <EndBox x={rightX} y={personY} title={personLabel} sub={personSub} />
           </g>
         ) : (

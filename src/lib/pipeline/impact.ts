@@ -134,7 +134,8 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
   const siteSources = sources.filter((s) => s.kind !== "user");
   const publicFiles = sources.filter((s) => s.kind === "user" && s.audience !== "staff");
   const allText = sources.map((s) => s.text).join("\n");
-  const primaryTool = tools[0] ?? null;
+  // The newest chat-style tool drives coverage, self-test, and could-move; drafting tools only feed the drafting load.
+  const primaryTool = tools.find((t) => t.mode === "chat") ?? tools[0] ?? null;
   const notChecked: string[] = [];
 
   // ----- Topic coverage -----
