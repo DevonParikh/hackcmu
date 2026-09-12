@@ -12,7 +12,12 @@
     "seed": "node scripts/seed-urls.mjs",
     "batch": "node scripts/batch.mjs",
     "export": "node scripts/export-training.mjs && node scripts/export-pairs.mjs",
-    "train": "python3 scripts/train-estimator.py && python3 scripts/judge.py train"
+    "train": "python3 scripts/train-estimator.py && python3 scripts/judge.py train",
+    "demo": "node money/demo.mjs",
+    "localnet": "node money/localnet.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:parse": "node scripts/test-parse.mjs",
+    "check": "npm run test:parse && npm run demo -- --text"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.15",
@@ -20,6 +25,7 @@
     "cheerio": "^1.2.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-openid-connect": "^3.4.0",
     "mongodb": "^7.6.0",
     "next": "^16.3.5",
     "react": "^19.3.0",
@@ -32,6 +38,7 @@
     "@types/node": "^24",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "litesvm": "^1.4.1",
     "postcss": "^8",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
