@@ -79,14 +79,23 @@ export async function audit(doc) {
   }
 }
 
+// Rows written by earlier versions of the rail kept the amount and recipient only inside `intent` / `rcpt`.
+// Lift them so every reader (--log, the demo's audit section, the prototype's list) prints "20 to ravi", never "? to ?".
+function normalizeRow(r) {
+  if (!r || typeof r !== "object") return r;
+  const amount = r.amount ?? r.intent?.amount ?? r.prepared?.amount ?? null;
+  const to = r.to ?? r.rcpt?.label ?? r.prepared?.rcpt?.label ?? r.intent?.to ?? r.recipient ?? null;
+  return { ...r, amount, to };
+}
+
 export async function readLog(n = 10) {
   if (env.MONGODB_URI) {
-    try { return await (await attempts()).find({}, { projection: { _id: 0 } }).sort({ ts: -1 }).limit(n).toArray(); }
+    try { return (await (await attempts()).find({}, { projection: { _id: 0 } }).sort({ ts: -1 }).limit(n).toArray()).map(normalizeRow); }
     catch { /* Atlas unreachable: fall through to the file, which audit() also wrote to */ }
   }
   if (!fs.existsSync("attempts.jsonl")) return [];
   return fs.readFileSync("attempts.jsonl", "utf8").trim().split("\n")
-           .filter(Boolean).map(l => JSON.parse(l)).slice(-n).reverse();
+           .filter(Boolean).map(l => JSON.parse(l)).slice(-n).reverse().map(normalizeRow);
 }
 
 // Out-of-band confirmation from the chain itself (a Helius-style transaction webhook, see server.mjs /api/webhook):
