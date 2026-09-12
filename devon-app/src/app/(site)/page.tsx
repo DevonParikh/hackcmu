@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { StartForm } from "@/components/StartForm";
+import { accessRequired } from "@/lib/access";
 import { companies } from "@/lib/db";
 import { isDemo } from "@/lib/llm";
 
@@ -9,12 +10,21 @@ export default async function Home() {
   let recent: { id: string; name: string; url: string; tagline: string; lastRunId: string | null; pageCount: number }[] = [];
   let dbError: string | null = null;
   try {
-    const list = await (await companies()).find({ lastRunId: { $ne: null } }).sort({ updatedAt: -1 }).limit(8).toArray();
-    recent = list.map((c) => ({ id: c._id, name: c.name, url: c.url, tagline: c.profile?.tagline ?? "", lastRunId: c.lastRunId, pageCount: c.pageCount }));
+    const list = await (await companies()).find({ lastRunId: { $ne: null } }).sort({ updatedAt: -1 }).limit(24).toArray();
+    // One entry per business name, newest first.
+    const seen = new Set<string>();
+    for (const c of list) {
+      const key = (c.name || c.url).trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      recent.push({ id: c._id, name: c.name, url: c.url, tagline: c.profile?.tagline ?? "", lastRunId: c.lastRunId, pageCount: c.pageCount });
+      if (recent.length === 8) break;
+    }
   } catch (e) {
     dbError = (e as Error).message;
   }
   const demo = isDemo();
+  const open = !accessRequired();
   return (
     <main className="mx-auto max-w-5xl px-5 py-10">
       <div className="grid gap-10 md:grid-cols-[1.2fr_1fr]">
@@ -29,8 +39,8 @@ export default async function Home() {
           </p>
           {demo && (
             <p className="mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: "var(--ochre-soft)", color: "#6b4a10" }}>
-              Demo mode: no <span className="mono">ANTHROPIC_API_KEY</span> is set. Reading sites, comparing, and hosting tools all work; written analysis
-              and assistant replies are quoted from the site instead of written by Claude.
+              Demo mode: this server has no Claude key, so the analysis uses built-in rules and the assistant answers straight from your pages. Whoever set this up can add
+              the key for the full version.
             </p>
           )}
           <div className="mt-6">
@@ -41,7 +51,7 @@ export default async function Home() {
           <p className="eyebrow">Recent businesses</p>
           {dbError ? (
             <p className="mt-2 text-sm" style={{ color: "var(--bad)" }}>
-              The database is not reachable: {dbError}. Set <span className="mono">MONGODB_URI</span> and restart.
+              The database is not reachable right now, so past reports cannot be listed. Whoever set this up can check the database connection and restart.
             </p>
           ) : recent.length === 0 ? (
             <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
@@ -68,6 +78,11 @@ export default async function Home() {
                 </li>
               ))}
             </ul>
+          )}
+          {open && !dbError && (
+            <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>
+              Reports on this server can be opened by anyone who can reach it; whoever set it up can add an access key to keep them private.
+            </p>
           )}
           <div className="mt-8">
             <p className="eyebrow">What you get</p>

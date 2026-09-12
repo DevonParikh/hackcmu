@@ -64,21 +64,21 @@ Prefer competitors serving the same customers in the same area or the same niche
     }
   }
 
-  const out: Competitor[] = [];
-  for (const c of list.slice(0, 5)) {
+  // Rival sites are read side by side with a short budget each, so five of them cannot stall the run.
+  const results = await Promise.all(
+    list.slice(0, 5).map(async (c): Promise<Competitor | null> => {
     try {
       log(`Reading competitor site ${c.url}`);
-      const crawl = await crawlSite(c.url, { maxPages: 8 });
+      const crawl = await crawlSite(c.url, { maxPages: 8, budgetMs: 30_000 });
       if (!crawl.pages.length) {
         log(`Could not read competitor ${c.url}; it is listed but not compared`);
-        if (c.name) out.push({ ...c, url: crawl.rootUrl, notesFrom: "web" });
-        continue;
+        return c.name ? { ...c, url: crawl.rootUrl, notesFrom: "web" } : null;
       }
       const home = crawl.pages[0];
       const name = c.name || (home ? stripTitle(home.title) : new URL(crawl.rootUrl).host);
       const offering = c.offering || home?.description || (home?.text.split("\n").find((l) => l.length > 60) ?? "").slice(0, 240);
       const has = FEATURE_KEYS.filter((k) => crawl.features[k]).map((k) => FEATURE_LABELS[k]);
-      out.push({
+      return {
         ...c,
         name,
         url: crawl.rootUrl,
@@ -88,11 +88,12 @@ Prefer competitors serving the same customers in the same area or the same niche
         features: crawl.features,
         tech: crawl.tech,
         notesFrom: c.strengths.length || c.weaknesses.length ? "web" : "detected",
-      });
+      };
     } catch (e) {
       log(`Could not read competitor ${c.url}: ${(e as Error).message}`);
-      if (c.name) out.push(c);
+      return c.name ? c : null;
     }
-  }
-  return out;
+    }),
+  );
+  return results.filter((c): c is Competitor => c !== null);
 }

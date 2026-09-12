@@ -23,7 +23,6 @@ export interface TopicRow {
 }
 
 export interface Impact {
-  badges: string[];
   topics: TopicRow[];
   coverageShare: number;
   writtenDown: { covered: number; total: number };
@@ -33,10 +32,11 @@ export interface Impact {
   };
   channels: { id: string; label: string; url: string | null }[];
   load: { low: number; high: number; arithmetic: string } | null;
-  couldMove: { kind: "range" | "atMost" | "none"; low: number | null; high: number | null; atMost: number | null; arithmetic: string; note: string } | null;
+  couldMove: { kind: "range" | "atMost" | "none"; label: string; low: number | null; high: number | null; atMost: number | null; arithmetic: string; note: string } | null;
   value: { kind: "range" | "atMost"; low: number; high: number } | null;
   drafting: { low: number; high: number; arithmetic: string } | null;
-  wait: { today: { low: number; high: number; label: string; source: "you" | "site"; quote: string | null; url: string | null } | null; assistantSeconds: number | null };
+  /** appliesTo is "email" when the promise on the site is about email replies only; the owner's own answer covers every channel. */
+  wait: { today: { low: number; high: number; label: string; source: "you" | "site"; quote: string | null; url: string | null; appliesTo: "all" | "email" } | null; assistantSeconds: number | null };
   selfTest: { answered: number; handedOff: number; failed: number; total: number; intervalLow: number; intervalHigh: number; latencyMedianSeconds: number; demo: boolean; starred: number } | null;
   reasons: Record<string, { quotes: number; missing: number; sources: number; needs: { covered: number; total: number; missing: string[] }; customerChange: string }>;
   headline: string | null;
@@ -84,7 +84,7 @@ function coverageFor(topic: Topic, srcs: SourceDoc[]): { state: CoverageState; s
   }
   if (!best) return { state: "none", source: null };
   const label = best.src.kind === "user" ? best.src.title : best.src.url;
-  if (best.matches >= 2 || best.title || total >= 3) return { state: "full", source: label };
+  if (best.matches >= 2 || best.title || total >= 3 || best.src.kind === "user") return { state: "full", source: label };
   return { state: "half", source: label };
 }
 
@@ -260,6 +260,7 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
       if (selfTest) {
         couldMove = {
           kind: "range",
+          label: "Could move to the assistant",
           low: r1(load.low * coverageShare * selfTest.intervalLow),
           high: r1(load.high * coverageShare * selfTest.intervalHigh),
           atMost,
@@ -267,18 +268,21 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
           note: "Handed-off and failed questions count as zero time moved; they still come to you.",
         };
       } else {
-        couldMove = { kind: "atMost", low: null, high: null, atMost, arithmetic: `${load.high} h × ${coverageText} = at most ${atMost} h/week`, note: "Build and test the assistant to get the lower bound." };
+        couldMove = { kind: "atMost", label: "Could move, at most", low: null, high: null, atMost, arithmetic: `${load.high} h × ${coverageText} = at most ${atMost} h/week`, note: "Build and test the assistant to get the lower bound." };
       }
     } else if (tid === "lead_intake" || tid === "booking_intake") {
+      // An intake tool collects the details; the owner still replies. So the ceiling is the time in
+      // exchanges that could arrive pre-collected, not time saved, and no dollar figure is attached
+      // until replies are timed.
       const share = selfTest ? selfTest.answered / selfTest.total : coverageShare;
       const atMost = r1(load.high * share);
-      couldMove = { kind: "atMost", low: null, high: null, atMost, arithmetic: `${load.high} h × ${selfTest ? `${selfTest.answered} of ${selfTest.total} test messages handled` : coverageText} = at most ${atMost} h/week`, note: "The details arrive collected; you still reply. Time a few replies in week one to see what that saves." };
+      couldMove = { kind: "atMost", label: "Could arrive with the details already collected, up to", low: null, high: null, atMost, arithmetic: `${load.high} h × ${selfTest ? `${selfTest.answered} of ${selfTest.total} test messages handled` : coverageText} = up to ${atMost} h/week of exchanges`, note: "This is time in exchanges the assistant can start, not time saved: you still reply, with the details in hand. Time a few replies in week one to see what that saves." };
     } else {
-      couldMove = { kind: "none", low: null, high: null, atMost: null, arithmetic: "", note: "For drafting tools, see the drafting load below." };
+      couldMove = { kind: "none", label: "", low: null, high: null, atMost: null, arithmetic: "", note: "For drafting tools, see the drafting load below." };
     }
     if (intake.hourValue && couldMove?.kind === "range" && couldMove.low !== null && couldMove.high !== null) {
       value = { kind: "range", low: Math.round(couldMove.low * intake.hourValue), high: Math.round(couldMove.high * intake.hourValue) };
-    } else if (intake.hourValue && couldMove?.kind === "atMost" && couldMove.atMost !== null) {
+    } else if (intake.hourValue && couldMove?.kind === "atMost" && couldMove.atMost !== null && (tid === "support_faq" || tid === "staff_assistant")) {
       value = { kind: "atMost", low: 0, high: Math.round(couldMove.atMost * intake.hourValue) };
     }
   }
@@ -291,7 +295,7 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
   let today: Impact["wait"]["today"] = null;
   if (intake.replyTime) {
     const [lo, hi] = BUCKETS.reply[intake.replyTime];
-    today = { low: lo, high: hi, label: BUCKET_LABELS.reply[intake.replyTime], source: "you", quote: null, url: null };
+    today = { low: lo, high: hi, label: BUCKET_LABELS.reply[intake.replyTime], source: "you", quote: null, url: null, appliesTo: "all" };
   } else {
     for (const s of siteSources) {
       const m = s.text.match(/(?:reply|respond|get back to you|answer)[^.\n]{0,40}?within (\d+|one|two|three|a|an) (business days?|hours?|days?)/i);
@@ -299,7 +303,7 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
         const nWord = m[1].toLowerCase();
         const n = { one: 1, a: 1, an: 1, two: 2, three: 3 }[nWord] ?? Number(nWord);
         const hours = /hour/.test(m[2]) ? n : /business/.test(m[2]) ? n * 24 : n * 24;
-        today = { low: 0, high: hours, label: `within ${m[1]} ${m[2]}`, source: "site", quote: m[0], url: s.url };
+        today = { low: 0, high: hours, label: `within ${m[1]} ${m[2]}`, source: "site", quote: m[0], url: s.url, appliesTo: /\b(e-?mails?|messages?|inquir\w*|enquir\w*)\b/i.test(m[0]) || /\b(e-?mails?|messages?)\b/i.test(s.text.slice(Math.max(0, s.text.indexOf(m[0]) - 80), s.text.indexOf(m[0]))) ? "email" : "all" };
         break;
       }
     }
@@ -337,11 +341,10 @@ export function computeImpact(opts: { run: RunDoc; company: CompanyDoc; sources:
   if (run.competitors.length) notChecked.push("Competitor features were detected from up to 8 public pages each; a rival may keep booking or chat behind a login.");
   if (publicFiles.length || sources.some((s) => s.kind === "user")) notChecked.push("Uploaded files were used as written; we did not check that they are current or correct.");
   notChecked.push(intake.topQuestions.length ? "The self-test used your questions first, then questions we wrote from your site." : "Self-test questions were written by us from your site; list your own most-asked questions for a fairer test.");
-  notChecked.push("Opening hours were not parsed, so nothing here assumes when you are open or closed.");
+  notChecked.push("We did not read your opening hours, so nothing here assumes when you are open or closed.");
   if (run.competitors.some((c) => c.notesFrom === "web")) notChecked.push("Competitor strengths and weaknesses written from web search were not verified against their pages; their feature checklist was.");
 
   return {
-    badges: ["Seen on your site", "From your file", "Compared", "Your number", "Tested", "Estimate", "Measured"],
     topics,
     coverageShare,
     writtenDown,

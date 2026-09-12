@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const Body = z.object({ message: z.string().min(1, "Type a message first.").max(4000, "Please keep messages under 4000 characters."), conversationId: z.string().max(100).optional() });
+const Body = z.object({ message: z.string().trim().min(1, "Type a message first.").max(4000, "Please keep messages under 4000 characters."), conversationId: z.string().max(100).optional() });
 
 // Per-instance rate limits: one visitor cannot lock a widget for everyone, and one widget has a ceiling.
 const buckets = new Map<string, { n: number; reset: number }>();

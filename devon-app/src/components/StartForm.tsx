@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function StartForm() {
   const router = useRouter();
@@ -13,6 +13,19 @@ export function StartForm() {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // "Try again" on a stopped report links back here with the same details in the address.
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const u = q.get("url"), c = q.get("competitors"), p = q.get("pain");
+      if (u) setUrl(u);
+      if (c) setCompetitors(c.split(",").map((x) => x.trim()).filter(Boolean).join(", "));
+      if (p) setPain(p);
+    } catch {
+      /* no address bar to read from */
+    }
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -82,7 +95,7 @@ export function StartForm() {
           {error}
         </p>
       )}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <button className="btn" type="submit" disabled={busy}>
           {busy ? "Starting…" : "Analyze my business"}
         </button>

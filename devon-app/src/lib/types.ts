@@ -23,13 +23,14 @@ export const CompanyProfileSchema = z.object({
   customerSegments: z.array(z.string()),
   businessModel: z.string().describe("How they make money"),
   pricingSummary: z.string().describe("What pricing is public, or 'not published'"),
-  sizeEstimate: z.string().describe("e.g. 'solo', '2-10 staff', '50-200 staff', with the reason"),
+  sizeEstimate: z.string().describe("Only what the sources state, e.g. 'About 9 people (the site says a team of nine)'; otherwise 'Not published on the site'. Never guess from the type of business."),
   channels: z.array(z.string()).describe("How customers reach them: walk-in, phone, web form, app"),
   toneOfVoice: z.string(),
   location: z.string().nullable(),
   sourceIndices: z.array(z.number().int()).describe("Indices of the sources used"),
 });
-export type CompanyProfile = z.infer<typeof CompanyProfileSchema>;
+/** sourceUrls is filled in after the call from sourceIndices, so the report can link the pages the profile came from. */
+export type CompanyProfile = z.infer<typeof CompanyProfileSchema> & { sourceUrls?: string[] };
 
 export const FEATURE_KEYS = [
   "onlineBooking",
@@ -116,6 +117,7 @@ const KnowledgeChunkSchema = z.object({
   title: z.string(),
   url: z.string(),
   text: z.string(),
+  kind: z.enum(["page", "user"]).optional(),
 });
 export type KnowledgeChunk = z.infer<typeof KnowledgeChunkSchema>;
 
@@ -138,6 +140,8 @@ const ToolConfigSchema = z.object({
   greeting: z.string(),
   about: z.string(),
   suggestedQuestions: z.array(z.string()),
+  /** What a booking is for this business: appointment, reservation, order, or booking. */
+  bookingKind: z.enum(["appointment", "reservation", "order", "booking"]).optional(),
   companyName: z.string(),
 });
 export type ToolConfig = z.infer<typeof ToolConfigSchema>;

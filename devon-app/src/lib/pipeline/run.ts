@@ -8,6 +8,8 @@ import { findCompetitors } from "./competitors";
 import { profileCompany } from "./profile";
 import { rankOpportunities } from "./rank";
 import { detectSignals } from "./signals";
+import { buildCorpus } from "./corpus";
+import { getTemplate } from "../templates";
 
 // Updates to one run document are serialized per process so fire-and-forget log
 // appends never interleave with stage writes (MongoDB itself is atomic per document,
@@ -72,7 +74,7 @@ export async function executeRun(runId: string): Promise<void> {
     // The raw input decides whether an http fallback is allowed (the owner typed no scheme).
     const crawl = await crawlSite(run.input.url || run.url, { maxPages: 25, log: (m) => log(m) });
     if (!crawl.pages.length) throw new Error("Could not read any pages from that URL. Check the address or paste content instead.");
-    log(`Read ${crawl.pages.length} pages${crawl.skipped ? ` (${crawl.skipped} skipped)` : ""}. Tools detected: ${crawl.tech.join(", ") || "none"}`);
+    log(`Read ${crawl.pages.length} pages${crawl.skipped ? ` (${crawl.skipped} skipped)` : ""}. Software spotted on the site: ${crawl.tech.join(", ") || "none"}`);
     if (crawl.externalHosts.length) log(`The site links out to: ${crawl.externalHosts.slice(0, 5).join(", ")}`);
 
     const srcCol = await sources();
@@ -92,10 +94,12 @@ export async function executeRun(runId: string): Promise<void> {
     }));
     if (srcDocs.length) await srcCol.insertMany(srcDocs);
     const allSources: SourceDoc[] = [...srcDocs, ...userDocs];
+    // One numbered corpus for the whole run: the profile and the assessment share it (and its cache).
+    const corpus = buildCorpus(allSources);
 
     await setStage(runId, "profile");
-    log("Profiling the company");
-    const profile = await profileCompany({ crawl, sources: allSources, nameHint: run.input.name });
+    log("Reading what the site says about the business");
+    const profile = await profileCompany({ crawl, sources: allSources, corpus, nameHint: run.input.name, log });
     const compCol = await companies();
     await compCol.updateOne(
       { _id: run.companyId },
@@ -115,7 +119,7 @@ export async function executeRun(runId: string): Promise<void> {
     );
     const snapshot: CompanySnapshot = { name: profile.name, url: crawl.rootUrl, profile, features: crawl.features, tech: crawl.tech, brand: crawl.brand, contact: crawl.contact, pageCount: crawl.pages.length };
     await updateRun(runId, { snapshot });
-    log(`Profiled ${profile.name}: ${profile.tagline}`);
+    log(`${profile.name}: ${profile.tagline}`);
 
     await setStage(runId, "competitors");
     const competitors = await findCompetitors({ companyName: profile.name, url: crawl.rootUrl, profile, providedUrls: run.input.competitors, log });
@@ -123,11 +127,11 @@ export async function executeRun(runId: string): Promise<void> {
     await updateRun(runId, { competitors });
 
     await setStage(runId, "assess");
-    log("Assessing strengths, weaknesses, and friction");
+    log("Looking for what works, what is missing, and the chores that eat time");
     const signals = detectSignals(crawl, run.input.pain);
-    const assessment = await assessCompany({ companyName: profile.name, crawl, sources: allSources, competitors, signals, log });
+    const assessment = await assessCompany({ companyName: profile.name, crawl, sources: allSources, corpus, competitors, signals, ownerText: run.input.pain, log });
     await updateRun(runId, { assessment });
-    log(`Found ${assessment.strengths.length} strengths, ${assessment.weaknesses.length} weaknesses, ${assessment.frictionSignals.length} friction signals`);
+    log(`Found ${assessment.strengths.length} things going well, ${assessment.weaknesses.length} gaps, and ${assessment.frictionSignals.length} chores that eat time`);
 
     await setStage(runId, "rank");
     const ctx: TemplateContext = {
@@ -145,7 +149,7 @@ export async function executeRun(runId: string): Promise<void> {
     };
     const opportunities = await rankOpportunities(ctx, assessment, run.input.pain);
     await updateRun(runId, { opportunities });
-    log(`Recommended: ${opportunities[0]?.templateId ?? "nothing"}`);
+    log(opportunities[0] ? `Best fit: ${getTemplate(opportunities[0].templateId)?.name ?? opportunities[0].templateId}` : "No assistant fits the evidence well enough to recommend");
     await setStage(runId, "done", { status: "done" });
     log("Analysis complete");
   } catch (e) {

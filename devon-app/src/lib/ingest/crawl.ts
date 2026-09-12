@@ -235,8 +235,9 @@ function extractPage(url: string, html: string, status: number): CrawledPage {
 
 // ---------- Crawl ----------
 
-export async function crawlSite(inputUrl: string, opts: { maxPages?: number; log?: (msg: string) => void } = {}): Promise<CrawlResult> {
+export async function crawlSite(inputUrl: string, opts: { maxPages?: number; budgetMs?: number; log?: (msg: string) => void } = {}): Promise<CrawlResult> {
   const maxPages = opts.maxPages ?? 25;
+  const budgetMs = opts.budgetMs ?? CRAWL_BUDGET_MS;
   const log = opts.log ?? (() => {});
   let rootUrl = normalizeUrl(inputUrl);
   const inputPath = new URL(rootUrl).pathname;
@@ -246,7 +247,7 @@ export async function crawlSite(inputUrl: string, opts: { maxPages?: number; log
   const pages: CrawledPage[] = [];
   const externalHosts = new Set<string>();
   let skipped = 0;
-  const deadline = Date.now() + CRAWL_BUDGET_MS;
+  const deadline = Date.now() + budgetMs;
   let inFlight = 0;
   let rootDone = false;
 
@@ -363,7 +364,7 @@ export async function crawlSite(inputUrl: string, opts: { maxPages?: number; log
     pump();
   });
   if (queue.length && (pages.length >= maxPages || Date.now() >= deadline)) {
-    log(pages.length >= maxPages ? `Stopped at ${maxPages} pages (${queue.length} more not read)` : `Stopped after ${Math.round(CRAWL_BUDGET_MS / 1000)}s (${queue.length} pages not read)`);
+    log(pages.length >= maxPages ? `Stopped at ${maxPages} pages (${queue.length} more not read)` : `Stopped after ${Math.round(budgetMs / 1000)}s (${queue.length} pages not read)`);
   }
 
   const tech = detectTech(pages);
@@ -508,6 +509,25 @@ function pickLogo(pages: CrawledPage[]): string | null {
   return null;
 }
 
+/** A logo is only kept when the URL really serves an image, so the hosted tool never shows a broken picture. */
+async function verifiedLogo(url: string | null): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (compatible; TailorBot/1.0)" } });
+    clearTimeout(timer);
+    const type = res.headers.get("content-type") || "";
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (!res.ok || buf.length < 100) return null;
+    const svg = /svg/i.test(type) || /^\s*<(\?xml|svg)/i.test(new TextDecoder().decode(buf.slice(0, 200)));
+    const raster = (buf[0] === 0x89 && buf[1] === 0x50) || (buf[0] === 0xff && buf[1] === 0xd8) || (buf[0] === 0x47 && buf[1] === 0x49) || (buf[0] === 0x52 && buf[1] === 0x49);
+    return svg || raster || /^image\//i.test(type) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 async function detectBrand(pages: CrawledPage[], rootUrl: string): Promise<Brand> {
   const counts = new Map<string, number>();
   const sheets = new Set<string>();
@@ -536,7 +556,7 @@ async function detectBrand(pages: CrawledPage[], rootUrl: string): Promise<Brand
     }
   }
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([h]) => h);
-  return { primary: sorted[0] ?? "#0e6b60", secondary: sorted[1] ?? "#b9791e", logoUrl: pickLogo(pages) };
+  return { primary: sorted[0] ?? "#0e6b60", secondary: sorted[1] ?? "#b9791e", logoUrl: await verifiedLogo(pickLogo(pages)) };
 }
 
 // ---------- Contact ----------

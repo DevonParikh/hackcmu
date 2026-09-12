@@ -71,7 +71,7 @@ export function IntakePanel({ runId, intake, sources, showItems, onSaved }: { ru
       setFiles([]);
       setNotes("");
       setInputKey((k) => k + 1);
-      setMsg({ kind: "ok", text: data.documents ? `Saved. ${data.documents} document${data.documents === 1 ? "" : "s"} added; the report below has been updated.` : "Saved. The report below has been updated." });
+      setMsg({ kind: "ok", text: `Saved.${data.documents ? ` ${data.documents} document${data.documents === 1 ? "" : "s"} added.` : ""} The headline and the grid above are updated, and so is the recommendation below.` });
       await onSaved();
     } catch (err) {
       setMsg({ kind: "err", text: (err as Error).message });
