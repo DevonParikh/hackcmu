@@ -146,3 +146,31 @@ export type Run = {
   updatedAt?: Date;
   finishedAt?: Date;
 };
+
+// ---------------------------------------------------------------- F. Build: a deployed tool (Mongo `tools`)
+export type Tool = {
+  slug: string;
+  runId: string;
+  company: string;
+  url: string;
+  template: TemplateId;
+  money: boolean;
+  name: string;                       // what the widget calls itself
+  tone: string;                       // "warm and brief"
+  offLimits: string[];                // topics it declines
+  kb: string;                         // the company's own pages, trimmed
+  wallet: string;                     // demo payout wallet for refunds (a contact name or address)
+  brand: { color: string; logo: string | null };
+  selfTest?: { asked: number; passed: number; items: { q: string; reply: string; ok: boolean }[] } | null;
+  createdAt: Date;
+};
+
+// One conversation turn in a deployed tool (Mongo `events`) — this is what the owner's dashboard reads.
+export type ToolEvent = {
+  slug: string;
+  ts: Date;
+  question: string;
+  reply: string;
+  handoff: boolean;
+  refund: { amount: string; to: string; url: string; landed: boolean; blocked: boolean } | null;
+};

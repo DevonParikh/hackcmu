@@ -196,6 +196,9 @@ export default async function Report({ params }: { params: Promise<{ id: string 
               Also considered: {r.top.slice(1).map(o => templateById(o.template)?.name).filter(Boolean).join(", ")}.
             </p>
           )}
+          <Link href={`/build/${id}`} className="mt-8 inline-block rounded-md px-6 py-3 text-white" style={{ background: accent }}>
+            Build this tool
+          </Link>
         </section>
       )}
     </main>

@@ -28,7 +28,7 @@ export const oneLine  = e   => String(e?.message ?? e).replace(/\s+/g, " ").slic
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const cap   = s  => s ? s[0].toUpperCase() + s.slice(1) : s;
 
-const conn   = new Connection(RPC, "confirmed");
+export const conn = new Connection(RPC, "confirmed");
 const agent  = Keypair.fromSecretKey(new Uint8Array(JSON.parse(fs.readFileSync(env.AGENT_KEYPAIR, "utf8"))));
 const mint   = new PublicKey(env.MINT);
 const source = new PublicKey(env.OWNER_ATA);
@@ -136,7 +136,7 @@ export async function getState() {
   };
 }
 
-function resolveRecipient(to) {
+export function resolveRecipient(to) {
   if (to && CONTACTS[to]) return { label: to, spoken: cap(to), ata: new PublicKey(CONTACTS[to]), owner: null };
   try {
     const owner = new PublicKey(to);
@@ -145,7 +145,7 @@ function resolveRecipient(to) {
 }
 
 // The agent signs as DELEGATE. It never touches the owner's key.
-async function buildTx(ata, owner, raw) {
+export async function buildTx(ata, owner, raw) {
   const tx = new Transaction();
   if (owner) tx.add(createAssociatedTokenAccountIdempotentInstruction(agent.publicKey, ata, owner, mint));
   tx.add(createTransferCheckedInstruction(source, mint, ata, agent.publicKey, raw, DECIMALS));

@@ -34,9 +34,7 @@ out = {"features": FEATURES, "mean": scaler.mean_.tolist(), "scale": scale.tolis
        "trainedAt": datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
 # ---------------------------------------------------------------- which tool (classification)
-tpl_all = [(i, r["topTemplate"]) for i, r in enumerate(rows) if r.get("topTemplate")]
-big = {t for t in set(t for _, t in tpl_all) if sum(1 for _, x in tpl_all if x == t) >= 3}   # a class with 1–2 examples can't be learned
-tpl_rows = [(i, t) for i, t in tpl_all if t in big]
+tpl_rows = [(i, r["topTemplate"]) for i, r in enumerate(rows) if r.get("topTemplate")]
 if len(tpl_rows) >= 20:
     idx = [i for i, _ in tpl_rows]; y = [t for _, t in tpl_rows]; X = Xs_all[idx]
     classes = sorted(set(y)); counts = {c: y.count(c) for c in classes}
