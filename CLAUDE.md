@@ -1,6 +1,8 @@
-# Tailor — plan
+# Tailor — plan and implementation notes
 
-*Working title. "Tailor" because it fits a small AI to one specific company.*
+*"Tailor" because it fits a small AI to one specific company. Sections 1–4 are the original
+plan; section 5 onward describes what is actually built. When they disagree, the code and
+README.md win.*
 
 ## 1. The pitch
 
@@ -117,20 +119,21 @@ Fill the chosen template:
 Each template is a folder: `prompt.md`, `schema.ts` (config + structured
 outputs), `ui.tsx`, `eval.ts`. Adding a template later is adding a folder.
 
-## 5. Architecture
+## 5. Architecture (as built)
 
-- **App**: Next.js (App Router) + TypeScript + Tailwind. One repo, deployed on Vercel.
-- **LLM**: Anthropic TypeScript SDK.
-  - `claude-opus-5` with adaptive thinking for profile, assessment, ranking, and build.
-  - `claude-sonnet-5` for competitor workers (parallel, cheaper).
-  - `claude-haiku-4-5` or `claude-sonnet-5` at runtime inside deployed tools (cost and latency matter there).
-  - Server tools `web_search_20260209` and `web_fetch_20260209` for discovery and page reads.
-  - Structured outputs via `client.messages.parse()` with zod schemas for every stage.
-  - Prompt caching: crawled corpus placed first and cached; per-question content after the breakpoint.
-- **Jobs**: one analysis run = a server route that streams progress over SSE and writes stage results to the DB as it goes, so a refresh resumes. Stretch: move to Inngest for retries.
-- **DB**: Postgres (Supabase) with Prisma. SQLite is fine for local dev.
-- **Data model**: `Company`, `Source` (URL, text, kind, fetchedAt), `Competitor`, `Assessment`, `Opportunity`, `Tool` (template, config JSON, knowledge base, brand), `Conversation` + `Message` (deployed-tool traffic), `EvalRun`.
-- **Deployed tool runtime**: `/t/[slug]` page and `/api/t/[slug]/chat` route; `embed.js` injects an iframe bubble. Rate-limited per slug. Tool never sees other companies' data.
+- **App**: Next.js 16 (App Router) + TypeScript + Tailwind v4. One repo. Owner-facing pages live in `src/app/(site)`; hosted tools at `src/app/t/[slug]` use the bare root layout so the embed iframe has no app chrome.
+- **LLM**: Anthropic TypeScript SDK, wrapped in `src/lib/llm.ts`.
+  - `claude-opus-5` (adaptive thinking) for profile, assessment, ranking prose, test questions, and grading.
+  - `claude-sonnet-5` for competitor research with the server tools `web_search_20260209` / `web_fetch_20260209` (pause_turn handled), and at runtime inside deployed tools with prompt caching over the knowledge block.
+  - Structured outputs via `messages.create` + `output_config.format` (`zodOutputFormat`), parsed and validated with zod; `stop_reason` checked for `refusal` and `max_tokens`.
+  - Demo mode (no `ANTHROPIC_API_KEY`): the same pipeline with deterministic heuristics and sentence-level BM25 retrieval (`src/lib/runtime/chat.ts`). `scripts/mock-anthropic.mjs` stands in for the API to exercise live paths without a key.
+- **Jobs**: `POST /api/analyze` creates the run and schedules `executeRun` with `next/server` `after()`; the report page polls `GET /api/runs/[id]` every 1.5 s. Writes to one run document are serialized per process (`withRunLock`). Runs older than 10 minutes without progress are marked stopped.
+- **DB**: MongoDB (official driver), collections `companies`, `runs`, `sources`, `tools`, `conversations`. String `_id`s. Company documents are upserted by host.
+- **Ingest**: `src/lib/ingest/crawl.ts` (redirect-aware crawl with a concurrency pool and time budget, charset decoding, private-address guard, structural feature detection, brand/logo/contact detection) and `src/lib/ingest/documents.ts` (PDF via unpdf, text, HTML).
+- **Impact model**: `src/lib/pipeline/impact.ts` is the only place numbers are computed. Inputs: crawl, uploads, owner intake (`run.intake`), self-test outcomes, logged conversations. Outputs: topic coverage, self-serve comparison, load and could-move ranges with printed arithmetic, wait bands, self-test outcomes with a Wilson interval, reasons per recommendation, "what we could not check".
+- **Templates**: `src/lib/templates/index.ts`, six templates in one file (prompt builder, data-availability rule, company-specific sample questions, greeting).
+- **Deployed tool runtime**: `/t/[slug]` page and `POST /api/tools/[slug]/chat`; `GET /embed.js?tool=slug` is self-locating (origin from its own script tag) and carries the brand colour. Per-visitor and per-tool rate limits. Staff-only uploads and job postings never reach customer-facing tools. Each reply stores an `answered` / `handed_off` outcome for the usage panel.
+- **Access**: optional `TAILOR_ACCESS_KEY` gates owner pages and APIs; hosted tools stay public.
 
 ## 6. Hackathon schedule (24 hours, team of 3–4)
 
@@ -176,5 +179,13 @@ multi-language tools when the site is bilingual.
 
 - TypeScript everywhere; one Next.js app, not separate services.
 - Templates over free-form generation: reliability beats novelty for deploy.
-- Evidence or it does not ship: every claim in the report links to a source.
+- Evidence or it does not ship: every claim in the report links to a source; in live mode quotes are verified against the page text and the model cannot mark its own evidence as an observation.
 - No vector database in v1; prompt caching over the crawled corpus is enough at this size.
+- Every number wears a badge (seen on your site / from your file / compared / your number / tested / estimate / measured). Nothing is estimated until the owner types a number; estimates are ranges with the arithmetic printed; hand-offs count as zero time saved; no benchmarks, no dollars without an hourly value, nothing annualized.
+
+## 11. Working on this repo
+
+- `npm run typecheck`, `npm run build`, then `npm start` (or `npm run dev`). Needs `MONGODB_URI`; set `TAILOR_ALLOW_PRIVATE_URLS=1` to analyze local fixture sites.
+- `npm run smoke` (with `BASE`, `SITE`, `RIVAL`) is the end-to-end test; keep it green. It expects a bakery-like fixture site.
+- Prefer deterministic code for anything shown as a number; the LLM writes prose and classifies, it never produces figures.
+- Keep copy in plain owner language: no "slug", "template", "score", "deflection".
