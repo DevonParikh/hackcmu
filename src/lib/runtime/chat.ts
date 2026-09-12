@@ -162,6 +162,7 @@ export async function answerChat(tool: ToolDoc, history: { role: "user" | "assis
 }
 
 export async function answerForm(tool: ToolDoc, input: string): Promise<string> {
+  if (!input.trim()) return "Paste the text first and I'll draft from it.";
   if (isDemo()) return demoForm(tool, input);
   const reply = await completeText({
     model: MODELS.runtime,
