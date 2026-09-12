@@ -82,6 +82,7 @@ async function showLog(n = 10) {
     const amt = r.intent?.resolvedAmount ?? r.intent?.amount ?? "?";
     console.log(`${tag}  ${r.ts}  "${r.input}"  →  ${amt} to ${r.intent?.to ?? "?"}`
       + (r.signature ? `\n         ${explorer(r.signature)}` : "")
+      + (r.chainError ? `\n         chain said: ${JSON.stringify(r.chainError)}` : "")
       + (r.error ? `\n         ${r.error}` : ""));
   }
 }
@@ -210,14 +211,23 @@ try {
       const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
       record.signature = sig;
       const bh  = await conn.getLatestBlockhash();
-      const res = await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
-      if (res.value.err) { record.blocked = true; console.log(`\n  CHAIN: REFUSED`); }
-      else               { record.landed  = true; console.log(`\n  CHAIN: SETTLED`); }
+      let chainErr = null;
+      try {
+        const res = await conn.confirmTransaction({ signature: sig, ...bh }, "confirmed");
+        chainErr = res.value.err;
+      } catch (e) {
+        // web3.js quirk: depending on which of its two confirmation paths wins the race, an
+        // on-chain failure either resolves with value.err or REJECTS with the raw err object.
+        if (e instanceof Error) throw e;   // expiry / network problems are real errors
+        chainErr = e;                       // a plain object here IS the chain's verdict
+      }
+      if (chainErr) { record.blocked = true; record.chainError = chainErr; console.log(`\n  CHAIN: REFUSED`); }
+      else          { record.landed  = true; console.log(`\n  CHAIN: SETTLED`); }
       console.log(`  ${explorer(sig)}`);
     }
   }
 } catch (e) {
-  record.error = String(e.message ?? e).split("\n")[0];
+  record.error = e instanceof Error ? e.message.split("\n")[0] : JSON.stringify(e);
   console.log(`\n  error: ${record.error}`);
 }
 
